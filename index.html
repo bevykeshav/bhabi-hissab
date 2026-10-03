@@ -417,15 +417,22 @@
       <button class="primary" id="saveStockBtn">सेव करें</button>
       <p class="save-status" id="stockStatus"></p>
 
-      <details class="master-manage">
-        <summary>+ नया आइटम जोड़ें (मोमोज़ के अलावा भी)</summary>
-        <div class="add-form">
-          <input type="text" id="newStockName" placeholder="नाम" class="wide" style="flex:2;">
-          <input type="text" id="newStockUnit" placeholder="यूनिट (पीस/किलो)" style="flex:1;">
-          <button class="secondary" id="addStockBtn">जोड़ें</button>
+      <div class="master-manage">
+        <div style="font-weight:800;color:var(--green);font-size:15px;margin-bottom:8px;">
+          ➕ नया आइटम जोड़ें
         </div>
-        <div id="stockMasterList" style="margin-top:12px;"></div>
-      </details>`;
+        <p class="hint" style="margin-bottom:8px;">
+          जैसे: Paneer Momos, Veg Momos, Spring Roll, Burger आदि।
+        </p>
+        <div class="add-form">
+          <input type="text" id="newStockName" placeholder="आइटम का नाम" class="wide" style="flex:2;">
+          <input type="text" id="newStockUnit" placeholder="यूनिट: पीस / प्लेट / किलो" style="flex:1;">
+          <button class="secondary" id="addStockBtn" style="white-space:nowrap;">+ जोड़ें</button>
+        </div>
+        <div id="stockAddStatus" class="save-status"></div>
+        <div style="font-weight:700;margin-top:12px;font-size:13px;">आइटम की सूची</div>
+        <div id="stockMasterList" style="margin-top:6px;"></div>
+      </div>`;
 
     const body = document.getElementById("stockBody");
     function recalcStock() {
@@ -494,11 +501,32 @@
       renderStock();
     }));
     document.getElementById("addStockBtn").addEventListener("click", async () => {
-      const name = document.getElementById("newStockName").value.trim();
-      const unit = document.getElementById("newStockUnit").value.trim() || "पीस";
-      if (!name) { alert("नाम भरें"); return; }
-      await call("addStockItem", { payload: { name, unit } });
-      renderStock();
+      const nameEl = document.getElementById("newStockName");
+      const unitEl = document.getElementById("newStockUnit");
+      const statusEl = document.getElementById("stockAddStatus");
+      const name = nameEl.value.trim();
+      const unit = unitEl.value.trim() || "पीस";
+
+      if (!name) {
+        statusEl.textContent = "⚠ पहले आइटम का नाम डालो";
+        statusEl.classList.add("err");
+        nameEl.focus();
+        return;
+      }
+
+      statusEl.textContent = "जोड़ रहा हूँ…";
+      statusEl.classList.remove("err");
+
+      try {
+        await call("addStockItem", { payload: { name, unit } });
+        nameEl.value = "";
+        unitEl.value = "";
+        statusEl.textContent = "✓ " + name + " जोड़ दिया गया";
+        setTimeout(renderStock, 250);
+      } catch (e) {
+        statusEl.textContent = "⚠ " + e.message;
+        statusEl.classList.add("err");
+      }
     });
   }
 </script>
