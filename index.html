@@ -80,6 +80,9 @@
 
   button.primary { font-size:14px; font-weight:700; padding:11px 18px; border-radius:8px;
     border:none; background:var(--green); color:#fff; cursor:pointer; margin-top:12px; width:100%; }
+  button.whatsapp-btn { font-size:14px; font-weight:800; padding:11px 18px; border-radius:8px;
+    border:none; background:#25D366; color:#fff; cursor:pointer; margin-top:10px; width:100%; }
+  .whatsapp-hint { font-size:12px; color:var(--ink-soft); margin-top:6px; }
   button.secondary { font-size:13px; font-weight:600; padding:7px 14px; border-radius:20px;
     border:1px solid var(--line); background:var(--green-soft); color:var(--green); cursor:pointer; }
   button.icon-btn { background:none; border:none; color:var(--ink-soft); font-size:16px; cursor:pointer; padding:2px 6px; }
@@ -127,6 +130,10 @@
   </div>
 
   <div id="sections"></div>
+  <div class="card">
+    <button class="whatsapp-btn" id="whatsappFullBtn">📲 WhatsApp पर आज का पूरा हिसाब भेजें</button>
+    <p class="whatsapp-hint">सामान, खर्च, कैश और स्टॉक का पूरा साफ-साफ संदेश बनेगा।</p>
+  </div>
   </div>
 
   <div id="stockTab" class="tab-panel">
@@ -364,6 +371,123 @@
     return new Date(d - tz).toISOString().slice(0, 10);
   }
 
+  async function sendFullWhatsApp() {
+    const btn = document.getElementById("whatsappFullBtn");
+    btn.textContent = "⏳ पूरा हिसाब तैयार हो रहा है…";
+    btn.disabled = true;
+
+    try {
+      const date = currentDate();
+
+      const [cashRes, dailyRes, momosRes, packingRes, stockRes, stockPrevRes, stockItemsRes] =
+        await Promise.all([
+          call("getCash", { date }),
+          call("getEntries", { section: "daily", date }),
+          call("getEntries", { section: "momos", date }),
+          call("getEntries", { section: "packing", date }),
+          call("getStockEntries", { date }),
+          safeCall("getStockEntries", { date: prevDateStr(date) }),
+          call("getStockItems")
+        ]);
+
+      const money = v => "₹" + Math.round(Number(v) || 0).toLocaleString("en-IN");
+      const sectionText = (title, res) => {
+        const arr = res.entries || [];
+        let total = 0;
+        const out = ["📦 *" + title + "*"];
+        if (!arr.length) {
+          out.push("• कोई एंट्री नहीं");
+          return { text: out.join("\n"), total: 0 };
+        }
+        arr.forEach(e => {
+          const qty = Number(e.quantity) || 0;
+          const rate = Number(e.rate) || 0;
+          const lineTotal = Number(e.total) || qty * rate;
+          total += lineTotal;
+          out.push("• " + e.itemName + ": " + qty + " " + (e.unit || "") +
+                   " × " + money(rate) + " = " + money(lineTotal));
+        });
+        out.push("• *कुल: " + money(total) + "*");
+        return { text: out.join("\n"), total };
+      };
+
+      const daily = sectionText("Daily का सामान", dailyRes);
+      const momos = sectionText("Momos बनाने का सामान", momosRes);
+      const packing = sectionText("Packing", packingRes);
+
+      const cash = Number(cashRes.cash) || 0;
+      const expense = daily.total + momos.total + packing.total;
+      const cashLeft = cash - expense;
+
+      const prevMap = {};
+      (stockPrevRes && stockPrevRes.entries || []).forEach(e => prevMap[e.itemId] = Number(e.leftover) || 0);
+      const stockMap = {};
+      (stockRes.entries || []).forEach(e => stockMap[e.itemId] = e);
+
+      const stockItems = (stockItemsRes.items || []).filter(it => it.active);
+      let made = 0, sold = 0, leftover = 0, available = 0;
+      const stockLines = ["📦 *आज का बना / बिका / बचा स्टॉक*"];
+
+      if (!stockItems.length) {
+        stockLines.push("• कोई स्टॉक आइटम नहीं");
+      } else {
+        stockItems.forEach(it => {
+          const e = stockMap[it.id];
+          const prev = prevMap[it.id] || 0;
+          const m = e ? Number(e.made) || 0 : 0;
+          const l = e ? Number(e.leftover) || 0 : 0;
+          const a = prev + m;
+          const s = a - l;
+
+          made += m; sold += s; leftover += l; available += a;
+
+          stockLines.push("• *" + it.name + "*");
+          stockLines.push("  कल बचा: " + prev + " " + it.unit);
+          stockLines.push("  आज बना: " + m + " " + it.unit);
+          stockLines.push("  कुल उपलब्ध: " + a + " " + it.unit);
+          stockLines.push("  आज बिका: " + s + " " + it.unit);
+          stockLines.push("  आज बचा: " + l + " " + it.unit);
+        });
+      }
+
+      const lines = [
+        "📋 *Crave Kitchen — आज का पूरा हिसाब*",
+        "📅 *तारीख:* " + date,
+        "",
+        daily.text,
+        "",
+        momos.text,
+        "",
+        packing.text,
+        "",
+        "💰 *कैश और खर्च*",
+        "• आज का कैश: " + money(cash),
+        "• कुल सामान खर्च: " + money(expense),
+        "• बचा पैसा: " + money(cashLeft),
+        "",
+        stockLines.join("\n"),
+        "",
+        "📊 *स्टॉक का कुल*",
+        "• आज बना: " + made,
+        "• कुल उपलब्ध: " + available,
+        "• आज बिका: " + sold,
+        "• आज बचा: " + leftover,
+        "",
+        "✅ हिसाब Crave Kitchen WebApp से बनाया गया है।"
+      ];
+
+      const url = "https://wa.me/?text=" + encodeURIComponent(lines.join("\n"));
+      window.open(url, "_blank");
+    } catch (e) {
+      alert("पूरा WhatsApp हिसाब तैयार नहीं हो पाया: " + e.message);
+    } finally {
+      btn.textContent = "📲 WhatsApp पर आज का पूरा हिसाब भेजें";
+      btn.disabled = false;
+    }
+  }
+
+  document.getElementById("whatsappFullBtn").addEventListener("click", sendFullWhatsApp);
+
   async function renderStock() {
     const date = currentDate();
     const cardEl = document.getElementById("stockCard");
@@ -415,6 +539,8 @@
         </table>
       </div>
       <button class="primary" id="saveStockBtn">सेव करें</button>
+      <button class="whatsapp-btn" id="whatsappStockBtn">📲 WhatsApp पर आज का पूरा हिसाब भेजें</button>
+      <p class="whatsapp-hint">पहले सेव करें, फिर WhatsApp बटन दबाकर पूरा हिसाब शेयर करें।</p>
       <p class="save-status" id="stockStatus"></p>
 
       <div class="master-manage">
@@ -480,6 +606,75 @@
         await call("saveStockEntries", { payload: { date, entries } });
         statusEl.textContent = "✓ सेव हो गया";
       } catch (e) { statusEl.textContent = "⚠ " + e.message; statusEl.classList.add("err"); }
+    });
+
+    document.getElementById("whatsappStockBtn").addEventListener("click", async () => {
+      const btn = document.getElementById("whatsappStockBtn");
+      btn.textContent = "⏳ हिसाब तैयार हो रहा है…";
+      btn.disabled = true;
+
+      try {
+        // Get the latest stock data from the backend so the WhatsApp message
+        // contains the saved values, not stale screen values.
+        const latest = await call("getStockEntries", { date });
+        const saved = {};
+        (latest.entries || []).forEach(e => { saved[e.itemId] = e; });
+
+        const lines = [];
+        lines.push("📋 *Crave Kitchen — आज का स्टॉक हिसाब*");
+        lines.push("📅 तारीख: " + date);
+        lines.push("");
+
+        let totalMade = 0, totalAvailable = 0, totalLeftover = 0, totalSold = 0;
+        let hasData = false;
+
+        items.forEach(it => {
+          const e = saved[it.id];
+          const prev = prevLeftover[it.id] || 0;
+          const made = e ? Number(e.made) || 0 : 0;
+          const leftover = e ? Number(e.leftover) || 0 : 0;
+          const available = prev + made;
+          const sold = available - leftover;
+
+          if (made || leftover || prev) hasData = true;
+
+          totalMade += made;
+          totalAvailable += available;
+          totalLeftover += leftover;
+          totalSold += sold;
+
+          lines.push("🔹 *" + it.name + "*");
+          lines.push("   • कल बचा: " + prev + " " + it.unit);
+          lines.push("   • आज बना: " + made + " " + it.unit);
+          lines.push("   • कुल उपलब्ध: " + available + " " + it.unit);
+          lines.push("   • आज बिका: " + sold + " " + it.unit);
+          lines.push("   • आज बचा: " + leftover + " " + it.unit);
+          lines.push("");
+        });
+
+        lines.push("📊 *कुल हिसाब*");
+        lines.push("• आज बना: " + totalMade);
+        lines.push("• कुल उपलब्ध: " + totalAvailable);
+        lines.push("• आज बिका: " + totalSold);
+        lines.push("• आज बचा: " + totalLeftover);
+        lines.push("");
+        lines.push("✅ हिसाब Crave Kitchen WebApp से बनाया गया है।");
+
+        if (!hasData) {
+          lines.splice(3, 0, "⚠️ आज अभी कोई स्टॉक एंट्री नहीं है।");
+          lines.push("");
+        }
+
+        const message = lines.join("\n");
+        const url = "https://wa.me/?text=" + encodeURIComponent(message);
+        window.open(url, "_blank");
+
+      } catch (e) {
+        alert("WhatsApp हिसाब तैयार नहीं हो पाया: " + e.message);
+      } finally {
+        btn.textContent = "📲 WhatsApp पर आज का पूरा हिसाब भेजें";
+        btn.disabled = false;
+      }
     });
 
     const mm = document.getElementById("stockMasterList");
