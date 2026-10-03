@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>सामान हिसाब</title>
+<style>
+  :root {
+    --paper:#FAF6EC; --line:#DDD3B8; --ink:#262019; --ink-soft:#6B5F4C;
+    --green:#2E5B41; --green-soft:#E4EEE3; --clay:#A8503A; --clay-soft:#F4E4DC;
+    --card:#FFFFFF; --shadow:rgba(38,32,25,.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --paper:#1B1712; --line:#3A3226; --ink:#EFE7D8; --ink-soft:#B3A78F;
+      --green:#6FAE86; --green-soft:#223228; --clay:#D98468; --clay-soft:#35251F;
+      --card:#241F18; --shadow:rgba(0,0,0,.35); }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink);
+    font-family:-apple-system,"Segoe UI",Roboto,"Noto Sans Devanagari",sans-serif;
+    padding:14px 10px 60px; line-height:1.5; }
+  .wrap { max-width:960px; margin:0 auto; }
+  header { margin-bottom:14px; border-bottom:2px solid var(--ink); padding-bottom:10px; }
+  h1 { font-family:Georgia,"Noto Serif Devanagari",serif; font-size:22px; margin:0; }
+
+  .top-row { display:grid; grid-template-columns: 1fr 220px; gap:12px; margin:14px 0; align-items:stretch; }
+  @media (max-width: 640px) { .top-row { grid-template-columns: 1fr; } }
+
+  .cash-card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; }
+  .cash-card label { font-weight:700; font-size:14px; display:block; margin-bottom:6px; }
+  .cash-card input[type="date"] { font-size:16px; font-weight:700; padding:8px 10px;
+    border:1.5px solid var(--line); border-radius:8px; background:var(--paper); color:var(--ink); width:100%; margin-bottom:10px; }
+  .cash-card input[type="number"] { font-size:18px; font-weight:700; padding:9px 10px;
+    border:1.5px solid var(--line); border-radius:8px; background:var(--paper); color:var(--ink); width:100%; }
+  .cash-status { font-size:12.5px; color:var(--green); min-height:16px; margin-top:6px; }
+  .cash-status.err { color:var(--clay); }
+
+  .leftover-card { background:var(--green-soft); border-radius:10px; padding:14px; text-align:center;
+    display:flex; flex-direction:column; justify-content:center; }
+  .leftover-card.neg { background:var(--clay-soft); }
+  .leftover-label { font-size:12.5px; color:var(--ink-soft); font-weight:700; margin-bottom:4px; }
+  .leftover-value { font-size:28px; font-weight:800; color:var(--green); font-variant-numeric:tabular-nums; }
+  .leftover-card.neg .leftover-value { color:var(--clay); }
+  .leftover-sub { font-size:11px; color:var(--ink-soft); margin-top:4px; }
+
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px;
+    padding:16px; margin-bottom:16px; box-shadow:0 1px 3px var(--shadow); }
+  .card h2 { font-family:Georgia,"Noto Serif Devanagari",serif; font-size:17px; margin:0 0 4px; }
+  .card .hint { color:var(--ink-soft); font-size:12.5px; margin:0 0 12px; }
+
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  thead th { text-align:left; font-size:11.5px; color:var(--ink-soft); font-weight:700;
+    border-bottom:1.5px solid var(--ink); padding:6px 4px; }
+  tbody td { padding:7px 4px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  tbody tr:last-child td { border-bottom:none; }
+  .num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .name-cell { font-weight:600; }
+  .table-scroll { overflow-x:auto; }
+
+  input[type="number"], input[type="text"] { font-size:15px; font-variant-numeric:tabular-nums;
+    padding:6px 8px; border:1.5px solid var(--line); border-radius:6px; background:var(--paper);
+    color:var(--ink); width:90px; }
+  input[type="text"].wide { width:100%; }
+  input:focus { outline:2px solid var(--clay); outline-offset:1px; }
+
+  .total-row td { border-top:2px solid var(--ink); border-bottom:none; padding-top:12px;
+    font-weight:700; font-size:15.5px; }
+  .total-row .num { color:var(--clay); }
+
+  button.primary { font-size:14px; font-weight:700; padding:11px 18px; border-radius:8px;
+    border:none; background:var(--green); color:#fff; cursor:pointer; margin-top:12px; width:100%; }
+  button.secondary { font-size:13px; font-weight:600; padding:7px 14px; border-radius:20px;
+    border:1px solid var(--line); background:var(--green-soft); color:var(--green); cursor:pointer; }
+  button.icon-btn { background:none; border:none; color:var(--ink-soft); font-size:16px; cursor:pointer; padding:2px 6px; }
+  button.icon-btn.danger { color:var(--clay); }
+  button.chip { font-size:12px; padding:4px 10px; border-radius:14px; border:1px solid var(--line);
+    background:var(--paper); color:var(--ink-soft); cursor:pointer; }
+  button.chip.on { background:var(--green); color:#fff; border-color:var(--green); }
+
+  .save-status { font-size:12.5px; color:var(--green); margin-top:8px; min-height:16px; }
+  .save-status.err { color:var(--clay); }
+
+  .add-form { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; align-items:center; }
+  .master-manage { margin-top:14px; border-top:1px dashed var(--line); padding-top:12px; }
+  .master-manage summary { cursor:pointer; font-size:13px; color:var(--green); font-weight:700; }
+  .master-row { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 0; }
+  .muted { color:var(--ink-soft); }
+  .warn { color:var(--clay); font-size:12.5px; margin:8px 0 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>सामान हिसाब</h1>
+  </header>
+
+  <div class="top-row">
+    <div class="cash-card">
+      <label for="mainDate">तारीख</label>
+      <input type="date" id="mainDate">
+      <label for="cashInput">आज कितना कैश आया ₹</label>
+      <input type="number" id="cashInput" min="0" step="1" placeholder="0">
+      <p class="cash-status" id="cashStatus"></p>
+    </div>
+    <div class="leftover-card" id="leftoverCard">
+      <div class="leftover-label">बचा पैसा (सामान लाने के लिए)</div>
+      <div class="leftover-value" id="leftoverValue">…</div>
+      <div class="leftover-sub" id="leftoverSub"></div>
+    </div>
+  </div>
+
+  <div id="sections"></div>
+</div>
+
+<script>
+  // यहाँ अपने Apps Script डिप्लॉयमेंट का Web app URL डालो
+  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwxfbXIxB67r8No6xIIVlJ8jU6wTFl0wXYgE8k7ocv39iair5yNpIsN1URATatIuGrE1Q/exec";
+
+  function todayStr() { const d=new Date(); const tz=d.getTimezoneOffset()*60000; return new Date(d-tz).toISOString().slice(0,10); }
+  function money(v){ return "₹"+Math.round(Number(v)||0).toLocaleString("en-IN"); }
+  function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+  let jsonpCounter = 0;
+  function jsonp(params) {
+    return new Promise((resolve, reject) => {
+      const cbName = "jsonp_cb_" + (jsonpCounter++);
+      const timeout = setTimeout(() => { cleanup(); reject(new Error("timeout")); }, 15000);
+      function cleanup(){ clearTimeout(timeout); delete window[cbName]; if (script.parentNode) script.parentNode.removeChild(script); }
+      window[cbName] = (data) => { cleanup(); resolve(data); };
+      const qp = Object.assign({}, params, { callback: cbName });
+      Object.keys(qp).forEach(k => { if (typeof qp[k] === "object") qp[k] = JSON.stringify(qp[k]); });
+      const qs = new URLSearchParams(qp).toString();
+      const script = document.createElement("script");
+      script.src = SCRIPT_URL + "?" + qs;
+      script.onerror = () => { cleanup(); reject(new Error("network")); };
+      document.body.appendChild(script);
+    });
+  }
+  async function call(action, extra) {
+    const params = Object.assign({ action }, extra || {});
+    if (params.payload) params.payload = JSON.stringify(params.payload);
+    const result = await jsonp(params);
+    if (/^(save|add|toggle|delete)/.test(action) && result && result.ok === false) {
+      throw new Error(result.error || "सेव नहीं हो पाया");
+    }
+    return result;
+  }
+  function safeCall(action, extra) { return call(action, extra).catch(() => null); }
+
+  const SECTIONS = [
+    { key: "daily", title: "Daily का सामान" },
+    { key: "momos", title: "मोमोज़ बनाने का सामान" },
+    { key: "packing", title: "Packing" }
+  ];
+
+  document.getElementById("mainDate").value = todayStr();
+  function currentDate() { return document.getElementById("mainDate").value || todayStr(); }
+
+  let sectionTotals = { daily: 0, momos: 0, packing: 0 };
+
+  function updateLeftover() {
+    const cash = parseFloat(document.getElementById("cashInput").value) || 0;
+    const totalExpense = sectionTotals.daily + sectionTotals.momos + sectionTotals.packing;
+    const leftover = cash - totalExpense;
+    const card = document.getElementById("leftoverCard");
+    const val = document.getElementById("leftoverValue");
+    const sub = document.getElementById("leftoverSub");
+    val.textContent = money(Math.abs(leftover));
+    card.classList.toggle("neg", leftover < 0);
+    sub.textContent = leftover < 0 ? "कमी है" : "कुल खर्च: " + money(totalExpense);
+  }
+
+  async function loadCash() {
+    const date = currentDate();
+    try {
+      const c = await call("getCash", { date });
+      document.getElementById("cashInput").value = c.cash || "";
+    } catch (e) {}
+    updateLeftover();
+  }
+  let cashSaveTimer = null;
+  function scheduleCashSave() {
+    clearTimeout(cashSaveTimer);
+    const statusEl = document.getElementById("cashStatus");
+    cashSaveTimer = setTimeout(async () => {
+      const date = currentDate();
+      const cash = parseFloat(document.getElementById("cashInput").value) || 0;
+      statusEl.textContent = "सेव हो रहा है…"; statusEl.classList.remove("err");
+      try { await call("saveCash", { payload: { date, cash } }); statusEl.textContent = "✓ सेव हो गया"; }
+      catch (e) { statusEl.textContent = "⚠ " + e.message; statusEl.classList.add("err"); }
+    }, 600);
+  }
+  document.getElementById("cashInput").addEventListener("input", () => { updateLeftover(); scheduleCashSave(); });
+  document.getElementById("mainDate").addEventListener("change", () => { loadCash(); renderAllSections(); });
+
+  async function renderAllSections() {
+    const container = document.getElementById("sections");
+    container.innerHTML = SECTIONS.map(s => `<div class="card" id="card-${s.key}"><p class="muted">लोड हो रहा है…</p></div>`).join("");
+    await Promise.all(SECTIONS.map(s => renderSection(s.key, s.title)));
+    updateLeftover();
+  }
+
+  async function renderSection(section, title) {
+    const date = currentDate();
+    const cardEl = document.getElementById("card-" + section);
+    let masterRes, entriesRes;
+    try {
+      [masterRes, entriesRes] = await Promise.all([
+        call("getItems", { section }), call("getEntries", { section, date })
+      ]);
+    } catch (e) {
+      cardEl.innerHTML = `<h2>${esc(title)}</h2><p class="warn">⚠ लोड नहीं हो पाया।</p>
+        <button class="secondary" id="retry-${section}">फिर कोशिश करें</button>`;
+      document.getElementById("retry-" + section).addEventListener("click", () => renderSection(section, title));
+      return;
+    }
+    const items = (masterRes.items || []).filter(it => it.active);
+    const existing = {};
+    (entriesRes.entries || []).forEach(e => { existing[e.itemId] = e; });
+
+    let rows = items.map(it => {
+      const ex = existing[it.id];
+      return `<tr data-id="${it.id}" data-unit="${esc(it.unit)}">
+        <td class="name-cell">${esc(it.name)}<div class="muted" style="font-size:11px;">${esc(it.unit)}</div></td>
+        <td class="num"><input type="number" class="qty-input" min="0" step="0.01" value="${ex?ex.quantity:''}" placeholder="0"></td>
+        <td class="num"><input type="number" class="rate-input" min="0" step="0.01" value="${ex?ex.rate:''}" placeholder="0"></td>
+        <td class="num row-total">₹0</td>
+      </tr>`;
+    }).join("");
+
+    cardEl.innerHTML = `
+      <h2>${esc(title)}</h2>
+      <p class="hint">मात्रा और कीमत डालो, कुल अपने आप बन जाएगा।</p>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>सामान</th><th class="num">मात्रा</th><th class="num">₹/यूनिट</th><th class="num">कुल ₹</th></tr></thead>
+          <tbody id="body-${section}">${rows || '<tr><td colspan="4" class="muted">कोई सक्रिय आइटम नहीं है।</td></tr>'}</tbody>
+          <tfoot><tr class="total-row"><td colspan="3">कुल</td><td class="num" id="total-${section}">₹0</td></tr></tfoot>
+        </table>
+      </div>
+      <button class="primary" id="save-${section}">सेव करें</button>
+      <p class="save-status" id="status-${section}"></p>
+
+      <details class="master-manage">
+        <summary>+ नया सामान जोड़ें / सूची बदलें</summary>
+        <div class="add-form">
+          <input type="text" id="newName-${section}" placeholder="नाम" class="wide" style="flex:2;">
+          <input type="text" id="newUnit-${section}" placeholder="यूनिट (किलो/पीस)" style="flex:1;">
+          <button class="secondary" id="addBtn-${section}">जोड़ें</button>
+        </div>
+        <div id="masterList-${section}" style="margin-top:12px;"></div>
+      </details>`;
+
+    const body = document.getElementById("body-" + section);
+    function recalc() {
+      let total = 0;
+      body.querySelectorAll("tr[data-id]").forEach(tr => {
+        const qty = parseFloat(tr.querySelector(".qty-input").value) || 0;
+        const rate = parseFloat(tr.querySelector(".rate-input").value) || 0;
+        tr.querySelector(".row-total").textContent = money(qty * rate);
+        total += qty * rate;
+      });
+      document.getElementById("total-" + section).textContent = money(total);
+      sectionTotals[section] = total;
+      updateLeftover();
+    }
+    body.querySelectorAll("input").forEach(inp => inp.addEventListener("input", recalc));
+    recalc();
+
+    document.getElementById("save-" + section).addEventListener("click", async () => {
+      const statusEl = document.getElementById("status-" + section);
+      statusEl.textContent = "सेव हो रहा है…"; statusEl.classList.remove("err");
+      const entries = [];
+      body.querySelectorAll("tr[data-id]").forEach(tr => {
+        entries.push({
+          itemId: tr.getAttribute("data-id"),
+          itemName: tr.querySelector(".name-cell").childNodes[0].textContent.trim(),
+          quantity: parseFloat(tr.querySelector(".qty-input").value) || 0,
+          unit: tr.getAttribute("data-unit"),
+          rate: parseFloat(tr.querySelector(".rate-input").value) || 0
+        });
+      });
+      try {
+        await call("saveEntries", { section, payload: { date, entries } });
+        statusEl.textContent = "✓ सेव हो गया";
+      } catch (e) { statusEl.textContent = "⚠ " + e.message; statusEl.classList.add("err"); }
+    });
+
+    renderMasterManage(section, masterRes.items || []);
+    document.getElementById("addBtn-" + section).addEventListener("click", async () => {
+      const name = document.getElementById("newName-" + section).value.trim();
+      const unit = document.getElementById("newUnit-" + section).value.trim();
+      if (!name || !unit) { alert("नाम और यूनिट दोनों भरें"); return; }
+      await call("addItem", { section, payload: { name, unit } });
+      renderSection(section, title);
+    });
+  }
+
+  function renderMasterManage(section, items) {
+    const el = document.getElementById("masterList-" + section);
+    if (!el) return;
+    el.innerHTML = items.map(it => `
+      <div class="master-row">
+        <span>${esc(it.name)} <span class="muted">(${esc(it.unit)})</span> ${it.active ? '' : '<span class="muted">— बंद</span>'}</span>
+        <span>
+          <button class="chip ${it.active?'on':''}" data-toggle="${it.id}">${it.active?'सक्रिय':'बंद'}</button>
+          <button class="icon-btn danger" data-del="${it.id}">हटाएं</button>
+        </span>
+      </div>`).join("");
+    el.querySelectorAll("[data-toggle]").forEach(b => b.addEventListener("click", async () => {
+      await call("toggleItem", { payload: { id: b.getAttribute("data-toggle") } });
+      renderAllSections();
+    }));
+    el.querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", async () => {
+      if (!confirm("ये आइटम पूरी तरह हटा दें?")) return;
+      await call("deleteItem", { payload: { id: b.getAttribute("data-del") } });
+      renderAllSections();
+    }));
+  }
+
+  loadCash();
+  renderAllSections();
+</script>
+</body>
+</html>
