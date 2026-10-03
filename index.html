@@ -2,8 +2,14 @@
 <html lang="hi">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>सामान हिसाब</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>Crave Kitchen</title>
+<meta name="theme-color" content="#2E5B41">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Crave Kitchen">
+<link rel="manifest" href="manifest.webmanifest">
 <style>
   :root {
     --paper:#FAF6EC; --line:#DDD3B8; --ink:#262019; --ink-soft:#6B5F4C;
@@ -100,12 +106,49 @@
   .master-row { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 0; }
   .muted { color:var(--ink-soft); }
   .warn { color:var(--clay); font-size:12.5px; margin:8px 0 0; }
+
+  html { -webkit-text-size-adjust:100%; }
+  body { min-height:100vh; padding:
+    max(10px, env(safe-area-inset-top))
+    8px
+    max(70px, env(safe-area-inset-bottom))
+    8px; }
+  button, input { min-height:44px; }
+  input[type="number"], input[type="text"], input[type="date"] { font-size:16px; }
+  .wrap { width:100%; max-width:760px; }
+  header { position:sticky; top:0; z-index:20; background:var(--paper);
+    padding-top:4px; margin-bottom:8px; }
+  header h1 { font-size:20px; }
+  .top-row { grid-template-columns:1fr; gap:8px; margin:8px 0; }
+  .cash-card, .leftover-card, .card { border-radius:12px; }
+  .tabs { position:sticky; top:50px; z-index:19; background:var(--paper);
+    padding:6px 0; margin:0 0 8px; }
+  .tab-btn { min-width:0; padding:10px 8px; font-size:13px; }
+  .table-scroll { margin-left:-4px; margin-right:-4px; }
+  table { min-width:620px; }
+  .stock-summary { grid-template-columns:repeat(2,1fr); }
+  .stock-stat { padding:9px 6px; }
+  .stock-stat .value { font-size:18px; }
+  button.primary, button.whatsapp-btn { min-height:48px; }
+  .add-form { display:grid; grid-template-columns:1fr 1fr auto; }
+  .add-form input { width:100% !important; min-width:0; }
+  .add-form button { min-width:70px; }
+  .master-row { min-height:48px; }
+  @media (max-width:430px) {
+    .add-form { grid-template-columns:1fr; }
+    .add-form button { width:100%; }
+    .cash-card input[type="number"] { font-size:20px; }
+    .leftover-value { font-size:25px; }
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <h1>सामान हिसाब</h1>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+      <h1>Crave Kitchen</h1>
+      <button id="installBtn" class="secondary" style="display:none;padding:7px 10px;">📲 Install</button>
+    </div>
   </header>
 
   <div class="tabs">
@@ -724,6 +767,30 @@
       }
     });
   }
+
+  // PWA install: Android Chrome will show the Install button when the app
+  // is served from HTTPS with the manifest + service worker files.
+  let deferredInstallPrompt = null;
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    const b = document.getElementById("installBtn");
+    if (b) b.style.display = "block";
+  });
+  const installBtn = document.getElementById("installBtn");
+  if (installBtn) {
+    installBtn.addEventListener("click", async () => {
+      if (!deferredInstallPrompt) return;
+      deferredInstallPrompt.prompt();
+      await deferredInstallPrompt.userChoice;
+      deferredInstallPrompt = null;
+      installBtn.style.display = "none";
+    });
+  }
+  if ("serviceWorker" in navigator && location.protocol === "https:") {
+    window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+  }
+
 </script>
 </body>
 </html>

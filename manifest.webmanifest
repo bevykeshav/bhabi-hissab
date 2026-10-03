@@ -1,0 +1,10 @@
+{
+  "name": "Crave Kitchen — सामान हिसाब",
+  "short_name": "Crave Kitchen",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#FAF6EC",
+  "theme_color": "#2E5B41",
+  "orientation": "portrait",
+  "description": "Crave Kitchen daily expense and stock tracker"
+}
