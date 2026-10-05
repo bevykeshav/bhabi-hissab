@@ -404,7 +404,7 @@
   renderStock();
 
   // ===================================================================
-  // मोमोज़ स्टॉक — आज कितने बने, कितने बचे (कोई भी आइटम जोड़ सकते हो, सिर्फ़ मोमोज़ नहीं)
+  // मोमोज़ स्टॉक — आज कितने बने, कितने बचे, ₹/यूनिट (कोई भी आइटम जोड़ सकते हो)
   // ===================================================================
 
   function prevDateStr(dateStr) {
@@ -479,6 +479,7 @@
           const prev = prevMap[it.id] || 0;
           const m = e ? Number(e.made) || 0 : 0;
           const l = e ? Number(e.leftover) || 0 : 0;
+          const r = e ? Number(e.rate) || 0 : 0;
           const a = prev + m;
           const s = a - l;
 
@@ -490,6 +491,7 @@
           stockLines.push("  कुल उपलब्ध: " + a + " " + it.unit);
           stockLines.push("  आज बिका: " + s + " " + it.unit);
           stockLines.push("  आज बचा: " + l + " " + it.unit);
+          if (r) stockLines.push("  ₹/यूनिट: " + money(r));
         });
       }
 
@@ -551,11 +553,14 @@
     const existing = {};
     (entriesRes.entries || []).forEach(e => { existing[e.itemId] = e; });
     const prevLeftover = {};
-    ((prevRes && prevRes.entries) || []).forEach(e => { prevLeftover[e.itemId] = e.leftover; });
+    const prevRate = {};
+    ((prevRes && prevRes.entries) || []).forEach(e => { prevLeftover[e.itemId] = e.leftover; prevRate[e.itemId] = e.rate; });
 
     let rows = items.map(it => {
       const ex = existing[it.id];
       const yesterday = prevLeftover[it.id] || 0;
+      // आज का रेट सेव है तो वही, वरना कल का रेट अपने-आप भर जाएगा (बदलना हो तो बदल सकते हो)
+      const rateVal = ex ? (ex.rate || '') : (prevRate[it.id] || '');
       return `<tr data-id="${it.id}" data-prev="${yesterday}">
         <td class="name-cell">${esc(it.name)}<div class="muted" style="font-size:11px;">${esc(it.unit)}</div></td>
         <td class="num" style="color:var(--ink-soft);">${yesterday}</td>
@@ -563,12 +568,13 @@
         <td class="num available-cell">0</td>
         <td class="num"><input type="number" class="leftover-input" min="0" step="1" value="${ex?ex.leftover:''}" placeholder="0"></td>
         <td class="num sold-cell">0</td>
+        <td class="num"><input type="number" class="rate-input" min="0" step="0.01" value="${rateVal}" placeholder="0"></td>
       </tr>`;
     }).join("");
 
     cardEl.innerHTML = `
       <h2>मोमोज़ स्टॉक</h2>
-      <p class="hint">${esc(date)} — हर आइटम के लिए कल का बचा स्टॉक अपने-आप आएगा। आज कितने बने और दिन के अंत में कितने बचे, बस इतना भरो।</p>
+      <p class="hint">${esc(date)} — हर आइटम के लिए कल का बचा स्टॉक अपने-आप आएगा। आज कितने बने और दिन के अंत में कितने बचे, बस इतना भरो। ₹/यूनिट भी सेव होगा।</p>
       <div class="stock-summary">
         <div class="stock-stat"><div class="label">आज बने</div><div class="value" id="stockMadeTotal">0</div></div>
         <div class="stock-stat"><div class="label">कुल उपलब्ध</div><div class="value" id="stockAvailableTotal">0</div></div>
@@ -577,8 +583,8 @@
       </div>
       <div class="table-scroll">
         <table>
-          <thead><tr><th>आइटम</th><th class="num">कल बचे</th><th class="num">आज बने</th><th class="num">कुल उपलब्ध</th><th class="num">आज बचे</th><th class="num">आज बिके</th></tr></thead>
-          <tbody id="stockBody">${rows || '<tr><td colspan="6" class="muted">कोई सक्रिय आइटम नहीं है।</td></tr>'}</tbody>
+          <thead><tr><th>आइटम</th><th class="num">कल बचे</th><th class="num">आज बने</th><th class="num">कुल उपलब्ध</th><th class="num">आज बचे</th><th class="num">आज बिके</th><th class="num">₹/यूनिट</th></tr></thead>
+          <tbody id="stockBody">${rows || '<tr><td colspan="7" class="muted">कोई सक्रिय आइटम नहीं है।</td></tr>'}</tbody>
         </table>
       </div>
       <button class="primary" id="saveStockBtn">सेव करें</button>
@@ -642,7 +648,8 @@
           itemId: tr.getAttribute("data-id"),
           itemName: tr.querySelector(".name-cell").childNodes[0].textContent.trim(),
           made: parseFloat(tr.querySelector(".made-input").value) || 0,
-          leftover: parseFloat(tr.querySelector(".leftover-input").value) || 0
+          leftover: parseFloat(tr.querySelector(".leftover-input").value) || 0,
+          rate: parseFloat(tr.querySelector(".rate-input").value) || 0
         });
       });
       try {
@@ -676,6 +683,7 @@
           const prev = prevLeftover[it.id] || 0;
           const made = e ? Number(e.made) || 0 : 0;
           const leftover = e ? Number(e.leftover) || 0 : 0;
+          const rate = e ? Number(e.rate) || 0 : 0;
           const available = prev + made;
           const sold = available - leftover;
 
@@ -692,6 +700,7 @@
           lines.push("   • कुल उपलब्ध: " + available + " " + it.unit);
           lines.push("   • आज बिका: " + sold + " " + it.unit);
           lines.push("   • आज बचा: " + leftover + " " + it.unit);
+          if (rate) lines.push("   • ₹/यूनिट: ₹" + Math.round(rate * 100) / 100);
           lines.push("");
         });
 
