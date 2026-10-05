@@ -222,10 +222,50 @@
       document.body.appendChild(script);
     });
   }
+  // ---- स्पीड: पूरा दिन एक ही कॉल में मँगवाओ, बाकी सब कॉल इसी से जवाब पाएँगी ----
+  const BOOT_TTL_MS = 30000;
+  const bootCache = {};   // date -> { t, p }
+  function bootFor(date) {
+    const c = bootCache[date];
+    if (c && Date.now() - c.t < BOOT_TTL_MS) return c.p;
+    const p = jsonp({ action: "getBootstrap", date }).then(r => {
+      if (!r || r.error || !r.items) throw new Error("bootstrap unavailable");
+      return r;
+    });
+    bootCache[date] = { t: Date.now(), p };
+    p.catch(() => { if (bootCache[date] && bootCache[date].p === p) delete bootCache[date]; });
+    return p;
+  }
+  function clearBoot() { Object.keys(bootCache).forEach(k => delete bootCache[k]); }
+  function fromBoot(b, action, params, d) {
+    switch (action) {
+      case "getItems": return { items: (b.items[params.section] || []) };
+      case "getEntries": return { entries: (b.entries[params.section] || []) };
+      case "getCash": return { cash: b.cash || 0 };
+      case "getStockItems": return { items: b.stockItems || [] };
+      case "getStockEntries":
+        if (params.date === d) return { entries: b.stockEntries || [] };
+        if (params.date === prevDateStr(d)) return { entries: b.stockPrevEntries || [] };
+        return null;
+    }
+    return null;
+  }
+  const BOOT_READS = /^(getItems|getEntries|getCash|getStockItems|getStockEntries)$/;
+
   async function call(action, extra) {
     const params = Object.assign({ action }, extra || {});
+    if (BOOT_READS.test(action)) {
+      const d = currentDate();
+      try {
+        const b = await bootFor(d);
+        const r = fromBoot(b, action, params, d);
+        if (r) return r;
+      } catch (e) { /* पुराना backend हो या कॉल फेल हो तो नीचे वाला सीधा रास्ता चलेगा */ }
+    }
     if (params.payload) params.payload = JSON.stringify(params.payload);
+    if (/^(save|add|toggle|delete)/.test(action)) clearBoot();
     const result = await jsonp(params);
+    if (/^(save|add|toggle|delete)/.test(action)) clearBoot();
     if (/^(save|add|toggle|delete)/.test(action) && result && result.ok === false) {
       throw new Error(result.error || "सेव नहीं हो पाया");
     }
