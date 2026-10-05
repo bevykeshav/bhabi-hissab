@@ -208,7 +208,7 @@
       const timeout = setTimeout(() => { cleanup(); reject(new Error("timeout")); }, 15000);
       function cleanup(){ clearTimeout(timeout); delete window[cbName]; if (script.parentNode) script.parentNode.removeChild(script); }
       window[cbName] = (data) => { cleanup(); resolve(data); };
-      const qp = Object.assign({}, params, { callback: cbName });
+      const qp = Object.assign({}, params, { callback: cbName, _t: Date.now() });
       Object.keys(qp).forEach(k => { if (typeof qp[k] === "object") qp[k] = JSON.stringify(qp[k]); });
       const qs = new URLSearchParams(qp).toString();
       const script = document.createElement("script");
@@ -304,7 +304,7 @@
       return `<tr data-id="${it.id}" data-unit="${esc(it.unit)}">
         <td class="name-cell">${esc(it.name)}<div class="muted" style="font-size:11px;">${esc(it.unit)}</div></td>
         <td class="num"><input type="number" class="qty-input" min="0" step="0.01" value="${ex?ex.quantity:''}" placeholder="0"></td>
-        <td class="num"><input type="number" class="rate-input" min="0" step="0.01" value="${ex ? ex.rate : (it.rate || '')}" placeholder="0"></td>
+        <td class="num"><input type="number" class="rate-input" min="0" step="0.01" value="${(ex && ex.rate) ? ex.rate : (it.rate || '')}" placeholder="0"></td>
         <td class="num row-total">₹0</td>
       </tr>`;
     }).join("");
