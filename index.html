@@ -38,6 +38,8 @@
   .stock-stat { background:var(--green-soft); border-radius:9px; padding:10px; text-align:center; }
   .stock-stat .label { font-size:11px; color:var(--ink-soft); font-weight:700; }
   .stock-stat .value { font-size:20px; font-weight:800; margin-top:2px; }
+  .stock-stat.earn { grid-column:1/-1; }
+  .stock-stat.earn .value { color:var(--green); font-size:24px; }
   @media (max-width:640px) { .stock-summary { grid-template-columns:repeat(2,1fr); } }
 
   .top-row { display:grid; grid-template-columns: 1fr 220px; gap:12px; margin:14px 0; align-items:stretch; }
@@ -73,6 +75,7 @@
   .num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
   .name-cell { font-weight:600; }
   .table-scroll { overflow-x:auto; }
+  .earn-cell { font-weight:800; color:var(--green); }
 
   input[type="number"], input[type="text"] { font-size:15px; font-variant-numeric:tabular-nums;
     padding:6px 8px; border:1.5px solid var(--line); border-radius:6px; background:var(--paper);
@@ -126,9 +129,11 @@
   .tab-btn { min-width:0; padding:10px 8px; font-size:13px; }
   .table-scroll { margin-left:-4px; margin-right:-4px; }
   table { min-width:620px; }
+  table.stock-table { min-width:860px; }
   .stock-summary { grid-template-columns:repeat(2,1fr); }
   .stock-stat { padding:9px 6px; }
   .stock-stat .value { font-size:18px; }
+  .stock-stat.earn .value { font-size:24px; }
   button.primary, button.whatsapp-btn { min-height:48px; }
   .add-form { display:grid; grid-template-columns:1fr 1fr auto; }
   .add-form input { width:100% !important; min-width:0; }
@@ -404,7 +409,8 @@
   renderStock();
 
   // ===================================================================
-  // मोमोज़ स्टॉक — आज कितने बने, कितने बचे, ₹/यूनिट (कोई भी आइटम जोड़ सकते हो)
+  // मोमोज़ स्टॉक — आज कितने बने, कितने बचे, ₹/प्लेट, पीस/प्लेट → कमाई
+  // कमाई = (बिके पीस ÷ पीस/प्लेट) × ₹/प्लेट   (पीस/प्लेट खाली हो तो 1 माना जाएगा)
   // ===================================================================
 
   function prevDateStr(dateStr) {
@@ -412,6 +418,11 @@
     d.setDate(d.getDate() - 1);
     const tz = d.getTimezoneOffset() * 60000;
     return new Date(d - tz).toISOString().slice(0, 10);
+  }
+
+  function earnOf(sold, pcs, rate) {
+    const p = Number(pcs) > 0 ? Number(pcs) : 1;
+    return Math.max(Number(sold) || 0, 0) / p * (Number(rate) || 0);
   }
 
   async function sendFullWhatsApp() {
@@ -468,7 +479,7 @@
       (stockRes.entries || []).forEach(e => stockMap[e.itemId] = e);
 
       const stockItems = (stockItemsRes.items || []).filter(it => it.active);
-      let made = 0, sold = 0, leftover = 0, available = 0;
+      let made = 0, sold = 0, leftover = 0, available = 0, earned = 0;
       const stockLines = ["📦 *आज का बना / बिका / बचा स्टॉक*"];
 
       if (!stockItems.length) {
@@ -480,10 +491,12 @@
           const m = e ? Number(e.made) || 0 : 0;
           const l = e ? Number(e.leftover) || 0 : 0;
           const r = e ? Number(e.rate) || 0 : 0;
+          const pcs = e ? Number(e.pcsPerPlate) || 0 : 0;
           const a = prev + m;
           const s = a - l;
+          const earn = earnOf(s, pcs, r);
 
-          made += m; sold += s; leftover += l; available += a;
+          made += m; sold += s; leftover += l; available += a; earned += earn;
 
           stockLines.push("• *" + it.name + "*");
           stockLines.push("  कल बचा: " + prev + " " + it.unit);
@@ -491,7 +504,8 @@
           stockLines.push("  कुल उपलब्ध: " + a + " " + it.unit);
           stockLines.push("  आज बिका: " + s + " " + it.unit);
           stockLines.push("  आज बचा: " + l + " " + it.unit);
-          if (r) stockLines.push("  ₹/यूनिट: " + money(r));
+          if (r) stockLines.push("  ₹/प्लेट: " + money(r) + (pcs ? " (" + pcs + " पीस/प्लेट)" : ""));
+          stockLines.push("  💰 आज की कमाई: " + money(earn));
         });
       }
 
@@ -517,6 +531,7 @@
         "• कुल उपलब्ध: " + available,
         "• आज बिका: " + sold,
         "• आज बचा: " + leftover,
+        "• 💰 आज की कमाई (बिक्री): " + money(earned),
         "",
         "✅ हिसाब Crave Kitchen WebApp से बनाया गया है।"
       ];
@@ -554,13 +569,19 @@
     (entriesRes.entries || []).forEach(e => { existing[e.itemId] = e; });
     const prevLeftover = {};
     const prevRate = {};
-    ((prevRes && prevRes.entries) || []).forEach(e => { prevLeftover[e.itemId] = e.leftover; prevRate[e.itemId] = e.rate; });
+    const prevPcs = {};
+    ((prevRes && prevRes.entries) || []).forEach(e => {
+      prevLeftover[e.itemId] = e.leftover;
+      prevRate[e.itemId] = e.rate;
+      prevPcs[e.itemId] = e.pcsPerPlate;
+    });
 
     let rows = items.map(it => {
       const ex = existing[it.id];
       const yesterday = prevLeftover[it.id] || 0;
-      // आज का रेट सेव है तो वही, वरना कल का रेट अपने-आप भर जाएगा (बदलना हो तो बदल सकते हो)
+      // आज का रेट/पीस सेव है तो वही, वरना कल का अपने-आप भर जाएगा (बदलना हो तो बदल सकते हो)
       const rateVal = ex ? (ex.rate || '') : (prevRate[it.id] || '');
+      const pcsVal = ex ? (ex.pcsPerPlate || '') : (prevPcs[it.id] || '');
       return `<tr data-id="${it.id}" data-prev="${yesterday}">
         <td class="name-cell">${esc(it.name)}<div class="muted" style="font-size:11px;">${esc(it.unit)}</div></td>
         <td class="num" style="color:var(--ink-soft);">${yesterday}</td>
@@ -568,23 +589,26 @@
         <td class="num available-cell">0</td>
         <td class="num"><input type="number" class="leftover-input" min="0" step="1" value="${ex?ex.leftover:''}" placeholder="0"></td>
         <td class="num sold-cell">0</td>
+        <td class="num"><input type="number" class="pcs-input" min="1" step="1" value="${pcsVal}" placeholder="10"></td>
         <td class="num"><input type="number" class="rate-input" min="0" step="0.01" value="${rateVal}" placeholder="0"></td>
+        <td class="num earn-cell">₹0</td>
       </tr>`;
     }).join("");
 
     cardEl.innerHTML = `
       <h2>मोमोज़ स्टॉक</h2>
-      <p class="hint">${esc(date)} — हर आइटम के लिए कल का बचा स्टॉक अपने-आप आएगा। आज कितने बने और दिन के अंत में कितने बचे, बस इतना भरो। ₹/यूनिट भी सेव होगा।</p>
+      <p class="hint">${esc(date)} — कल का बचा स्टॉक अपने-आप आएगा। आज कितने बने और दिन के अंत में कितने बचे भरो। कमाई निकालने के लिए पीस/प्लेट और ₹/प्लेट डालो (कमाई = बिके ÷ पीस/प्लेट × ₹/प्लेट)।</p>
       <div class="stock-summary">
         <div class="stock-stat"><div class="label">आज बने</div><div class="value" id="stockMadeTotal">0</div></div>
         <div class="stock-stat"><div class="label">कुल उपलब्ध</div><div class="value" id="stockAvailableTotal">0</div></div>
         <div class="stock-stat"><div class="label">आज बचे</div><div class="value" id="stockLeftoverTotal">0</div></div>
         <div class="stock-stat"><div class="label">आज बिके</div><div class="value" id="stockSoldTotal">0</div></div>
+        <div class="stock-stat earn"><div class="label">💰 आज की कमाई</div><div class="value" id="stockEarnTotal">₹0</div></div>
       </div>
       <div class="table-scroll">
-        <table>
-          <thead><tr><th>आइटम</th><th class="num">कल बचे</th><th class="num">आज बने</th><th class="num">कुल उपलब्ध</th><th class="num">आज बचे</th><th class="num">आज बिके</th><th class="num">₹/यूनिट</th></tr></thead>
-          <tbody id="stockBody">${rows || '<tr><td colspan="7" class="muted">कोई सक्रिय आइटम नहीं है।</td></tr>'}</tbody>
+        <table class="stock-table">
+          <thead><tr><th>आइटम</th><th class="num">कल बचे</th><th class="num">आज बने</th><th class="num">कुल उपलब्ध</th><th class="num">आज बचे</th><th class="num">आज बिके</th><th class="num">पीस/प्लेट</th><th class="num">₹/प्लेट</th><th class="num">कमाई ₹</th></tr></thead>
+          <tbody id="stockBody">${rows || '<tr><td colspan="9" class="muted">कोई सक्रिय आइटम नहीं है।</td></tr>'}</tbody>
         </table>
       </div>
       <button class="primary" id="saveStockBtn">सेव करें</button>
@@ -611,19 +635,24 @@
 
     const body = document.getElementById("stockBody");
     function recalcStock() {
-      let madeTotal = 0, availableTotal = 0, leftoverTotal = 0, soldTotal = 0;
+      let madeTotal = 0, availableTotal = 0, leftoverTotal = 0, soldTotal = 0, earnTotal = 0;
       body.querySelectorAll("tr[data-id]").forEach(tr => {
         const prev = parseFloat(tr.getAttribute("data-prev")) || 0;
         const made = parseFloat(tr.querySelector(".made-input").value) || 0;
         const leftover = parseFloat(tr.querySelector(".leftover-input").value) || 0;
+        const pcs = parseFloat(tr.querySelector(".pcs-input").value) || 0;
+        const rate = parseFloat(tr.querySelector(".rate-input").value) || 0;
         const available = prev + made;
         const sold = available - leftover;
+        const earn = earnOf(sold, pcs, rate);
         tr.querySelector(".available-cell").textContent = available;
         tr.querySelector(".sold-cell").textContent = sold;
+        tr.querySelector(".earn-cell").textContent = money(earn);
         madeTotal += made;
         availableTotal += available;
         leftoverTotal += leftover;
         soldTotal += sold;
+        earnTotal += earn;
       });
       const set = (id, value) => {
         const el = document.getElementById(id);
@@ -633,9 +662,10 @@
       set("stockAvailableTotal", availableTotal);
       set("stockLeftoverTotal", leftoverTotal);
       set("stockSoldTotal", soldTotal);
+      set("stockEarnTotal", money(earnTotal));
     }
+    recalcStock();
     body.querySelectorAll("tr[data-id]").forEach(tr => {
-      recalcStock();
       tr.querySelectorAll("input").forEach(inp => inp.addEventListener("input", recalcStock));
     });
 
@@ -649,7 +679,8 @@
           itemName: tr.querySelector(".name-cell").childNodes[0].textContent.trim(),
           made: parseFloat(tr.querySelector(".made-input").value) || 0,
           leftover: parseFloat(tr.querySelector(".leftover-input").value) || 0,
-          rate: parseFloat(tr.querySelector(".rate-input").value) || 0
+          rate: parseFloat(tr.querySelector(".rate-input").value) || 0,
+          pcsPerPlate: parseFloat(tr.querySelector(".pcs-input").value) || 0
         });
       });
       try {
@@ -664,8 +695,7 @@
       btn.disabled = true;
 
       try {
-        // Get the latest stock data from the backend so the WhatsApp message
-        // contains the saved values, not stale screen values.
+        // बैकएंड से ताज़ा सेव डेटा लो ताकि मैसेज में सेव की हुई वैल्यू जाएँ
         const latest = await call("getStockEntries", { date });
         const saved = {};
         (latest.entries || []).forEach(e => { saved[e.itemId] = e; });
@@ -675,7 +705,7 @@
         lines.push("📅 तारीख: " + date);
         lines.push("");
 
-        let totalMade = 0, totalAvailable = 0, totalLeftover = 0, totalSold = 0;
+        let totalMade = 0, totalAvailable = 0, totalLeftover = 0, totalSold = 0, totalEarn = 0;
         let hasData = false;
 
         items.forEach(it => {
@@ -684,8 +714,10 @@
           const made = e ? Number(e.made) || 0 : 0;
           const leftover = e ? Number(e.leftover) || 0 : 0;
           const rate = e ? Number(e.rate) || 0 : 0;
+          const pcs = e ? Number(e.pcsPerPlate) || 0 : 0;
           const available = prev + made;
           const sold = available - leftover;
+          const earn = earnOf(sold, pcs, rate);
 
           if (made || leftover || prev) hasData = true;
 
@@ -693,6 +725,7 @@
           totalAvailable += available;
           totalLeftover += leftover;
           totalSold += sold;
+          totalEarn += earn;
 
           lines.push("🔹 *" + it.name + "*");
           lines.push("   • कल बचा: " + prev + " " + it.unit);
@@ -700,7 +733,8 @@
           lines.push("   • कुल उपलब्ध: " + available + " " + it.unit);
           lines.push("   • आज बिका: " + sold + " " + it.unit);
           lines.push("   • आज बचा: " + leftover + " " + it.unit);
-          if (rate) lines.push("   • ₹/यूनिट: ₹" + Math.round(rate * 100) / 100);
+          if (rate) lines.push("   • ₹/प्लेट: ₹" + Math.round(rate * 100) / 100 + (pcs ? " (" + pcs + " पीस/प्लेट)" : ""));
+          lines.push("   • 💰 कमाई: " + money(earn));
           lines.push("");
         });
 
@@ -709,6 +743,7 @@
         lines.push("• कुल उपलब्ध: " + totalAvailable);
         lines.push("• आज बिका: " + totalSold);
         lines.push("• आज बचा: " + totalLeftover);
+        lines.push("• 💰 आज की कमाई (बिक्री): " + money(totalEarn));
         lines.push("");
         lines.push("✅ हिसाब Crave Kitchen WebApp से बनाया गया है।");
 
