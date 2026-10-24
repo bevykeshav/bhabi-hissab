@@ -40,6 +40,8 @@
   .stock-stat .value { font-size:20px; font-weight:800; margin-top:2px; }
   .stock-stat.earn { grid-column:1/-1; }
   .stock-stat.earn .value { color:var(--green); font-size:24px; }
+  .stock-stat.neg { background:var(--clay-soft); }
+  .stock-stat.neg .value { color:var(--clay); }
   @media (max-width:640px) { .stock-summary { grid-template-columns:repeat(2,1fr); } }
 
   .top-row { display:grid; grid-template-columns: 1fr 220px; gap:12px; margin:14px 0; align-items:stretch; }
@@ -76,6 +78,8 @@
   .name-cell { font-weight:600; }
   .table-scroll { overflow-x:auto; }
   .earn-cell { font-weight:800; color:var(--green); }
+  .neg-text { color:var(--clay); font-weight:800; }
+  .pos-text { color:var(--green); font-weight:800; }
 
   input[type="number"], input[type="text"] { font-size:15px; font-variant-numeric:tabular-nums;
     padding:6px 8px; border:1.5px solid var(--line); border-radius:6px; background:var(--paper);
@@ -110,6 +114,15 @@
   .muted { color:var(--ink-soft); }
   .warn { color:var(--clay); font-size:12.5px; margin:8px 0 0; }
 
+  /* कुल हिसाब टैब */
+  .range-row { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px; }
+  .range-row label { font-weight:700; font-size:13px; display:block; margin-bottom:4px; }
+  .range-row input[type="date"] { font-size:16px; font-weight:700; padding:8px 10px;
+    border:1.5px solid var(--line); border-radius:8px; background:var(--paper); color:var(--ink); width:100%; }
+  .chip-row { display:flex; gap:6px; flex-wrap:wrap; margin:4px 0 4px; }
+  .chip-row button.chip { min-height:36px; }
+  .sub-title { font-weight:800; font-size:14px; margin:16px 0 6px; color:var(--green); }
+
   html { -webkit-text-size-adjust:100%; }
   body { min-height:100vh; padding:
     max(10px, env(safe-area-inset-top))
@@ -126,10 +139,12 @@
   .cash-card, .leftover-card, .card { border-radius:12px; }
   .tabs { position:sticky; top:50px; z-index:19; background:var(--paper);
     padding:6px 0; margin:0 0 8px; }
-  .tab-btn { min-width:0; padding:10px 8px; font-size:13px; }
+  .tab-btn { min-width:0; padding:10px 6px; font-size:13px; }
   .table-scroll { margin-left:-4px; margin-right:-4px; }
   table { min-width:620px; }
   table.stock-table { min-width:860px; }
+  table.rtable { min-width:0; }
+  table.rtable-wide { min-width:480px; }
   .stock-summary { grid-template-columns:repeat(2,1fr); }
   .stock-stat { padding:9px 6px; }
   .stock-stat .value { font-size:18px; }
@@ -159,6 +174,7 @@
   <div class="tabs">
     <button class="tab-btn active" data-tab="hisabTab">📋 सामान हिसाब</button>
     <button class="tab-btn" data-tab="stockTab">📦 बना / बिका / बचा</button>
+    <button class="tab-btn" data-tab="totalTab">📊 कुल हिसाब</button>
   </div>
 
   <div id="hisabTab" class="tab-panel active">
@@ -187,22 +203,48 @@
   <div id="stockTab" class="tab-panel">
     <div class="card" id="stockCard"><p class="muted">लोड हो रहा है…</p></div>
   </div>
+
+  <div id="totalTab" class="tab-panel">
+    <div class="card">
+      <h2>📊 कुल हिसाब</h2>
+      <p class="hint">तारीख़ें चुनो — रोज़ का बचा पैसा, हर आइटम का कुल और स्टॉक की कमाई सब जुड़कर दिखेगा।</p>
+      <div class="range-row">
+        <div><label for="rangeFrom">से (From)</label><input type="date" id="rangeFrom"></div>
+        <div><label for="rangeTo">तक (To)</label><input type="date" id="rangeTo"></div>
+      </div>
+      <div class="chip-row">
+        <button class="chip" data-range="today">आज</button>
+        <button class="chip" data-range="week">पिछले 7 दिन</button>
+        <button class="chip" data-range="month">इस महीने</button>
+        <button class="chip" data-range="lastmonth">पिछला महीना</button>
+      </div>
+      <button class="primary" id="rangeLoadBtn">हिसाब निकालो</button>
+      <p class="save-status" id="rangeStatus"></p>
+    </div>
+    <div id="rangeResult"></div>
+  </div>
 </div>
 
 <script>
   // यहाँ अपने Apps Script डिप्लॉयमेंट का Web app URL डालो
   const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwxfbXIxB67r8No6xIIVlJ8jU6wTFl0wXYgE8k7ocv39iair5yNpIsN1URATatIuGrE1Q/exec";
 
+  let rangeAutoLoaded = false;
   document.querySelectorAll(".tab-btn").forEach(btn => {
     btn.addEventListener("click", () => {
       document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
       document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
       btn.classList.add("active");
       document.getElementById(btn.dataset.tab).classList.add("active");
+      if (btn.dataset.tab === "totalTab" && !rangeAutoLoaded) {
+        rangeAutoLoaded = true;
+        loadRange();
+      }
     });
   });
 
   function todayStr() { const d=new Date(); const tz=d.getTimezoneOffset()*60000; return new Date(d-tz).toISOString().slice(0,10); }
+  function ymd(d) { const tz=d.getTimezoneOffset()*60000; return new Date(d-tz).toISOString().slice(0,10); }
   function money(v){ return "₹"+Math.round(Number(v)||0).toLocaleString("en-IN"); }
   function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 
@@ -850,6 +892,167 @@
         statusEl.classList.add("err");
       }
     });
+  }
+
+  // ===================================================================
+  // 📊 कुल हिसाब — तारीख़ों की रेंज: रोज़ का बचा पैसा + हर आइटम का कुल + स्टॉक कमाई
+  // ===================================================================
+  let lastRange = null;
+
+  function fmtDate(s) { const p = String(s).split("-"); return p.length === 3 ? p[2] + "-" + p[1] : s; }
+  function fmtDateFull(s) { const p = String(s).split("-"); return p.length === 3 ? p[2] + "-" + p[1] + "-" + p[0] : s; }
+  function qtyStr(v) { return String(Math.round((Number(v) || 0) * 100) / 100); }
+
+  function setRange(kind) {
+    const now = new Date();
+    let from = new Date(now), to = new Date(now);
+    if (kind === "week") { from.setDate(now.getDate() - 6); }
+    else if (kind === "month") { from = new Date(now.getFullYear(), now.getMonth(), 1); }
+    else if (kind === "lastmonth") {
+      from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      to = new Date(now.getFullYear(), now.getMonth(), 0);
+    }
+    document.getElementById("rangeFrom").value = ymd(from);
+    document.getElementById("rangeTo").value = ymd(to);
+  }
+
+  document.getElementById("rangeFrom").value = ymd(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  document.getElementById("rangeTo").value = todayStr();
+  document.querySelectorAll("[data-range]").forEach(b => b.addEventListener("click", () => {
+    setRange(b.getAttribute("data-range"));
+    loadRange();
+  }));
+  document.getElementById("rangeLoadBtn").addEventListener("click", loadRange);
+
+  async function loadRange() {
+    const from = document.getElementById("rangeFrom").value || todayStr();
+    const to = document.getElementById("rangeTo").value || from;
+    const statusEl = document.getElementById("rangeStatus");
+    const resEl = document.getElementById("rangeResult");
+    statusEl.textContent = "⏳ हिसाब निकल रहा है…"; statusEl.classList.remove("err");
+    try {
+      const r = await jsonp({ action: "getRangeSummary", from, to });
+      if (!r || r.error || !r.totals) throw new Error(r && r.error ? r.error : "बैकएंड में नया Code.gs डालकर दोबारा Deploy करो");
+      lastRange = r;
+      statusEl.textContent = "";
+      renderRange(r);
+    } catch (e) {
+      statusEl.textContent = "⚠ " + e.message; statusEl.classList.add("err");
+      resEl.innerHTML = "";
+    }
+  }
+
+  function renderRange(r) {
+    const t = r.totals;
+    const negTotal = t.leftover < 0;
+
+    const dayRows = (r.days || []).map(d => `<tr>
+        <td class="name-cell">${esc(fmtDate(d.date))}</td>
+        <td class="num">${money(d.cash)}</td>
+        <td class="num">${money(d.expense)}</td>
+        <td class="num ${d.leftover < 0 ? 'neg-text' : 'pos-text'}">${d.leftover < 0 ? '−' : ''}${money(Math.abs(d.leftover))}</td>
+      </tr>`).join("");
+
+    const itemCards = SECTIONS.map(s => {
+      const arr = (r.items && r.items[s.key]) || [];
+      const rows = arr.map(it => `<tr>
+          <td class="name-cell">${esc(it.name)}</td>
+          <td class="num">${qtyStr(it.qty)} ${esc(it.unit || "")}</td>
+          <td class="num">${money(it.amount)}</td>
+        </tr>`).join("");
+      return `<div class="card">
+        <h2>${esc(s.title)} — आइटम-वार कुल</h2>
+        <div class="table-scroll"><table class="rtable">
+          <thead><tr><th>सामान</th><th class="num">कुल मात्रा</th><th class="num">कुल ₹</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="3" class="muted">इस रेंज में कोई एंट्री नहीं।</td></tr>'}</tbody>
+          <tfoot><tr class="total-row"><td colspan="2">कुल</td><td class="num">${money(t[s.key])}</td></tr></tfoot>
+        </table></div>
+      </div>`;
+    }).join("");
+
+    const st = r.stock || { items: [], totals: { made: 0, sold: 0, earn: 0 } };
+    const stockRows = (st.items || []).map(it => `<tr>
+        <td class="name-cell">${esc(it.name)}</td>
+        <td class="num">${qtyStr(it.made)}</td>
+        <td class="num">${qtyStr(it.sold)}</td>
+        <td class="num earn-cell">${money(it.earn)}</td>
+      </tr>`).join("");
+
+    document.getElementById("rangeResult").innerHTML = `
+      <div class="card">
+        <h2>${esc(fmtDateFull(r.from))} से ${esc(fmtDateFull(r.to))}</h2>
+        <div class="stock-summary" style="margin-top:10px;">
+          <div class="stock-stat"><div class="label">कुल कैश आया</div><div class="value">${money(t.cash)}</div></div>
+          <div class="stock-stat"><div class="label">कुल सामान खर्च</div><div class="value">${money(t.expense)}</div></div>
+          <div class="stock-stat earn ${negTotal ? 'neg' : ''}"><div class="label">💰 कुल बचा पैसा (रोज़ का बचा जोड़कर)</div><div class="value">${negTotal ? '−' : ''}${money(Math.abs(t.leftover))}</div></div>
+        </div>
+        <div class="sub-title">📅 रोज़ का बचा पैसा</div>
+        <div class="table-scroll"><table class="rtable">
+          <thead><tr><th>तारीख</th><th class="num">कैश</th><th class="num">खर्च</th><th class="num">बचा</th></tr></thead>
+          <tbody>${dayRows || '<tr><td colspan="4" class="muted">इस रेंज में कोई कैश/खर्च नहीं मिला।</td></tr>'}</tbody>
+          <tfoot><tr class="total-row"><td>कुल</td><td class="num">${money(t.cash)}</td><td class="num">${money(t.expense)}</td><td class="num">${negTotal ? '−' : ''}${money(Math.abs(t.leftover))}</td></tr></tfoot>
+        </table></div>
+      </div>
+      ${itemCards}
+      <div class="card">
+        <h2>📦 मोमोज़ स्टॉक — कुल</h2>
+        <div class="table-scroll"><table class="rtable">
+          <thead><tr><th>आइटम</th><th class="num">कुल बने</th><th class="num">कुल बिके</th><th class="num">कुल कमाई</th></tr></thead>
+          <tbody>${stockRows || '<tr><td colspan="4" class="muted">इस रेंज में कोई स्टॉक एंट्री नहीं।</td></tr>'}</tbody>
+          <tfoot><tr class="total-row"><td>कुल</td><td class="num">${qtyStr(st.totals.made)}</td><td class="num">${qtyStr(st.totals.sold)}</td><td class="num">${money(st.totals.earn)}</td></tr></tfoot>
+        </table></div>
+      </div>
+      <div class="card">
+        <button class="whatsapp-btn" id="whatsappRangeBtn" style="margin-top:0;">📲 WhatsApp पर यह कुल हिसाब भेजें</button>
+        <p class="whatsapp-hint">बचा पैसा, हर आइटम का कुल और स्टॉक कमाई का पूरा संदेश बनेगा।</p>
+      </div>`;
+
+    document.getElementById("whatsappRangeBtn").addEventListener("click", sendRangeWhatsApp);
+  }
+
+  function sendRangeWhatsApp() {
+    const r = lastRange;
+    if (!r) return;
+    const t = r.totals;
+    const sgn = v => (v < 0 ? "−" : "") + money(Math.abs(v));
+    const L = [];
+    L.push("📋 *Crave Kitchen — कुल हिसाब*");
+    L.push("📅 *" + fmtDateFull(r.from) + " से " + fmtDateFull(r.to) + "*");
+    L.push("");
+    L.push("💰 *कैश और बचा पैसा*");
+    L.push("• कुल कैश आया: " + money(t.cash));
+    L.push("• कुल सामान खर्च: " + money(t.expense));
+    L.push("• *कुल बचा पैसा: " + sgn(t.leftover) + "*");
+    L.push("");
+    L.push("📅 *रोज़ का बचा पैसा*");
+    if (!(r.days || []).length) L.push("• कोई एंट्री नहीं");
+    (r.days || []).forEach(d => {
+      L.push("• " + fmtDate(d.date) + ": कैश " + money(d.cash) + " − खर्च " + money(d.expense) + " = *" + sgn(d.leftover) + "*");
+    });
+
+    SECTIONS.forEach(s => {
+      const arr = (r.items && r.items[s.key]) || [];
+      L.push("");
+      L.push("📦 *" + s.title + " (कुल)*");
+      if (!arr.length) { L.push("• कोई एंट्री नहीं"); return; }
+      arr.forEach(it => {
+        L.push("• " + it.name + ": " + qtyStr(it.qty) + " " + (it.unit || "") + " = " + money(it.amount));
+      });
+      L.push("• *कुल: " + money(t[s.key]) + "*");
+    });
+
+    const st = r.stock || { items: [], totals: { made: 0, sold: 0, earn: 0 } };
+    L.push("");
+    L.push("🥟 *मोमोज़ स्टॉक (कुल)*");
+    if (!(st.items || []).length) L.push("• कोई एंट्री नहीं");
+    (st.items || []).forEach(it => {
+      L.push("• " + it.name + ": बने " + qtyStr(it.made) + ", बिके " + qtyStr(it.sold) + ", कमाई " + money(it.earn));
+    });
+    L.push("• *कुल बने " + qtyStr(st.totals.made) + " | बिके " + qtyStr(st.totals.sold) + " | 💰 कमाई " + money(st.totals.earn) + "*");
+    L.push("");
+    L.push("✅ हिसाब Crave Kitchen WebApp से बनाया गया है।");
+
+    window.open("https://wa.me/?text=" + encodeURIComponent(L.join("\n")), "_blank");
   }
 
   // PWA install: Android Chrome will show the Install button when the app
