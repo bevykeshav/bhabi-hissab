@@ -915,7 +915,7 @@
   // ===================================================================
   let lastRange = null;
 
-  const WDAYS = ["रविवार","सोमवार","मंगलवार","बुधवार","गुरुवार","शुक्रवार","शनिवार"];
+  const WDAYS = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
   function wdOf(s) { const d = new Date(String(s) + "T12:00:00"); return isNaN(d) ? "" : WDAYS[d.getDay()]; }
   function fmtDate(s) { const p = String(s).split("-"); return p.length === 3 ? p[2] + "-" + p[1] + " (" + wdOf(s) + ")" : s; }
   function fmtDateFull(s) { const p = String(s).split("-"); return p.length === 3 ? p[2] + "-" + p[1] + "-" + p[0] + " (" + wdOf(s) + ")" : s; }
@@ -1025,6 +1025,7 @@
     document.getElementById("rangeResult").innerHTML = `
       <div class="card">
         <h2>${esc(fmtDateFull(r.from))} से ${esc(fmtDateFull(r.to))}</h2>
+        ${r.festSource === 'fixed' ? '<p class="warn">⚠ त्योहार Google calendar से नहीं आ पाए। Apps Script में authorizeCalendar चलाकर दोबारा Deploy करो, या Sheet के "Festivals" टैब में तारीख़ और नाम खुद लिख दो।</p>' : ''}
         <div class="stock-summary" style="margin-top:10px;">
           <div class="stock-stat"><div class="label">कुल कैश आया</div><div class="value">${money(t.cash)}</div></div>
           <div class="stock-stat"><div class="label">कुल सामान खर्च</div><div class="value">${money(t.expense)}</div></div>
