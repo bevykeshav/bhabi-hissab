@@ -136,6 +136,7 @@
   .sale-bar > i { display:block; height:100%; background:var(--green); border-radius:5px; }
   .sale-row.best .sale-bar > i { background:var(--clay); }
   .sale-items { font-size:11.5px; color:var(--ink-soft); }
+  .day-fest, .sale-fest { font-size:11.5px; font-weight:600; color:var(--clay); margin-top:1px; }
   .sub-title { font-weight:800; font-size:14px; margin:16px 0 6px; color:var(--green); }
 
   html { -webkit-text-size-adjust:100%; }
@@ -914,8 +915,11 @@
   // ===================================================================
   let lastRange = null;
 
-  function fmtDate(s) { const p = String(s).split("-"); return p.length === 3 ? p[2] + "-" + p[1] : s; }
-  function fmtDateFull(s) { const p = String(s).split("-"); return p.length === 3 ? p[2] + "-" + p[1] + "-" + p[0] : s; }
+  const WDAYS = ["रविवार","सोमवार","मंगलवार","बुधवार","गुरुवार","शुक्रवार","शनिवार"];
+  function wdOf(s) { const d = new Date(String(s) + "T12:00:00"); return isNaN(d) ? "" : WDAYS[d.getDay()]; }
+  function fmtDate(s) { const p = String(s).split("-"); return p.length === 3 ? p[2] + "-" + p[1] + " (" + wdOf(s) + ")" : s; }
+  function fmtDateFull(s) { const p = String(s).split("-"); return p.length === 3 ? p[2] + "-" + p[1] + "-" + p[0] + " (" + wdOf(s) + ")" : s; }
+  function festOf(d) { return (lastRange && lastRange.festivals && lastRange.festivals[d]) || ""; }
   function qtyStr(v) { return String(Math.round((Number(v) || 0) * 100) / 100); }
 
   function setRange(kind) {
@@ -973,7 +977,7 @@
     const negTotal = t.leftover < 0;
 
     const dayRows = (r.days || []).map(d => `<tr>
-        <td class="name-cell">${esc(fmtDate(d.date))}</td>
+        <td class="name-cell">${esc(fmtDate(d.date))}${festOf(d.date) ? '<div class="day-fest">🎉 ' + esc(festOf(d.date)) + '</div>' : ''}</td>
         <td class="num">${money(d.cash)}</td>
         <td class="num">${money(d.expense)}</td>
         <td class="num ${d.leftover < 0 ? 'neg-text' : 'pos-text'}">${d.leftover < 0 ? '−' : ''}${money(Math.abs(d.leftover))}</td>
@@ -1066,6 +1070,7 @@
     const totalSold = days.reduce((s, d) => s + d.sold, 0);
     const avg = totalSold / days.length;
     const best = days.filter(d => d.sold === maxSold);
+    const bestFest = best.map(d => festOf(d.date)).filter(Boolean).join(" , ");
     if (salesSort === "best") days.sort((a, b) => b.sold - a.sold);
     else days.sort((a, b) => a.date < b.date ? -1 : 1);
 
@@ -1077,6 +1082,7 @@
       return `<div class="sale-row ${isBest ? 'best' : ''}">
         <div class="sale-top"><span>${isBest ? '🏆 ' : (above ? '🔥 ' : '')}${esc(fmtDate(d.date))}</span>
           <span>${qtyStr(d.sold)} बिके · ${money(d.earn)}</span></div>
+        ${festOf(d.date) ? '<div class="sale-fest">🎉 ' + esc(festOf(d.date)) + '</div>' : ''}
         <div class="sale-bar"><i style="width:${pct}%"></i></div>
         <div class="sale-items">${items}</div>
       </div>`;
@@ -1088,6 +1094,7 @@
       <div class="best-box">
         <div class="small">सबसे ज़्यादा बिक्री वाला दिन</div>
         <div class="big">${best.map(d => esc(fmtDateFull(d.date))).join(" , ")}</div>
+        ${bestFest ? '<div class="small" style="color:var(--clay);font-weight:700;">🎉 ' + esc(bestFest) + '</div>' : ''}
         <div class="small">${qtyStr(maxSold)} मोमोज़ बिके · ${money(best[0].earn)} कमाई${best.length > 1 ? ' (बराबर बिक्री वाले दिन)' : ''}</div>
         <div class="small" style="margin-top:4px;">रोज़ का औसत: ${qtyStr(avg)} बिके</div>
       </div>
@@ -1119,7 +1126,7 @@
     L.push("📅 *रोज़ का बचा पैसा*");
     if (!(r.days || []).length) L.push("• कोई एंट्री नहीं");
     (r.days || []).forEach(d => {
-      L.push("• " + fmtDate(d.date) + ": कैश " + money(d.cash) + " − खर्च " + money(d.expense) + " = *" + sgn(d.leftover) + "*");
+      L.push("• " + fmtDate(d.date) + ": कैश " + money(d.cash) + " − खर्च " + money(d.expense) + " = *" + sgn(d.leftover) + "*" + (festOf(d.date) ? " 🎉 " + festOf(d.date) : ""));
     });
 
     SECTIONS.forEach(s => {
@@ -1147,7 +1154,7 @@
       L.push("");
       L.push("🏆 *किस दिन कितनी बिक्री*");
       sdays.forEach(d => {
-        L.push("• " + fmtDate(d.date) + ": " + qtyStr(d.sold) + " बिके, " + money(d.earn) + (mx > 0 && d.sold === mx ? " 🏆" : ""));
+        L.push("• " + fmtDate(d.date) + ": " + qtyStr(d.sold) + " बिके, " + money(d.earn) + (mx > 0 && d.sold === mx ? " 🏆" : "") + (festOf(d.date) ? " 🎉 " + festOf(d.date) : ""));
       });
       const bd = sdays.filter(d => d.sold === mx).map(d => fmtDateFull(d.date)).join(", ");
       L.push("• *सबसे अच्छा दिन: " + bd + " (" + qtyStr(mx) + " बिके)*");
