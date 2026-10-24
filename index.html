@@ -126,6 +126,16 @@
   .detail-row td { background:var(--green-soft); font-size:12.5px; padding:8px 10px; }
   .detail-line { display:flex; justify-content:space-between; gap:8px; padding:3px 0; border-bottom:1px dashed var(--line); }
   .detail-line:last-child { border-bottom:none; }
+  .best-box { background:var(--green-soft); border-radius:10px; padding:12px; text-align:center; margin-bottom:10px; }
+  .best-box .big { font-size:24px; font-weight:800; color:var(--green); }
+  .best-box .small { font-size:12px; color:var(--ink-soft); }
+  .sale-row { padding:8px 0; border-bottom:1px solid var(--line); }
+  .sale-row:last-child { border-bottom:none; }
+  .sale-top { display:flex; justify-content:space-between; gap:8px; font-weight:700; font-size:14px; }
+  .sale-bar { height:8px; background:var(--line); border-radius:5px; margin:5px 0 3px; overflow:hidden; }
+  .sale-bar > i { display:block; height:100%; background:var(--green); border-radius:5px; }
+  .sale-row.best .sale-bar > i { background:var(--clay); }
+  .sale-items { font-size:11.5px; color:var(--ink-soft); }
   .sub-title { font-weight:800; font-size:14px; margin:16px 0 6px; color:var(--green); }
 
   html { -webkit-text-size-adjust:100%; }
@@ -1032,12 +1042,64 @@
           <tfoot><tr class="total-row"><td>कुल</td><td class="num">${qtyStr(st.totals.made)}</td><td class="num">${qtyStr(st.totals.sold)}</td><td class="num">${money(st.totals.earn)}</td></tr></tfoot>
         </table></div>
       </div>
+      <div class="card" id="salesDaysCard"></div>
       <div class="card">
         <button class="whatsapp-btn" id="whatsappRangeBtn" style="margin-top:0;">📲 WhatsApp पर यह कुल हिसाब भेजें</button>
         <p class="whatsapp-hint">बचा पैसा, हर आइटम का कुल और स्टॉक कमाई का पूरा संदेश बनेगा।</p>
       </div>`;
 
     document.getElementById("whatsappRangeBtn").addEventListener("click", sendRangeWhatsApp);
+    renderSalesDays();
+  }
+
+  // 🏆 किस दिन कितने मोमोज़ बिके — सबसे अच्छी बिक्री वाला दिन ऊपर दिखेगा
+  let salesSort = "date";
+  function renderSalesDays() {
+    const box = document.getElementById("salesDaysCard");
+    if (!box || !lastRange) return;
+    const days = ((lastRange.stock && lastRange.stock.days) || []).slice();
+    if (!days.length) {
+      box.innerHTML = `<h2>🏆 किस दिन कितनी बिक्री</h2><p class="muted" style="margin:8px 0 0;">इस रेंज में कोई स्टॉक एंट्री नहीं।</p>`;
+      return;
+    }
+    const maxSold = Math.max.apply(null, days.map(d => d.sold));
+    const totalSold = days.reduce((s, d) => s + d.sold, 0);
+    const avg = totalSold / days.length;
+    const best = days.filter(d => d.sold === maxSold);
+    if (salesSort === "best") days.sort((a, b) => b.sold - a.sold);
+    else days.sort((a, b) => a.date < b.date ? -1 : 1);
+
+    const rows = days.map(d => {
+      const isBest = maxSold > 0 && d.sold === maxSold;
+      const above = !isBest && d.sold > avg * 1.2;
+      const pct = maxSold > 0 ? Math.max(Math.round(d.sold / maxSold * 100), 0) : 0;
+      const items = (d.items || []).map(x => esc(x.name) + " " + qtyStr(x.sold)).join(" · ");
+      return `<div class="sale-row ${isBest ? 'best' : ''}">
+        <div class="sale-top"><span>${isBest ? '🏆 ' : (above ? '🔥 ' : '')}${esc(fmtDate(d.date))}</span>
+          <span>${qtyStr(d.sold)} बिके · ${money(d.earn)}</span></div>
+        <div class="sale-bar"><i style="width:${pct}%"></i></div>
+        <div class="sale-items">${items}</div>
+      </div>`;
+    }).join("");
+
+    box.innerHTML = `
+      <h2>🏆 किस दिन कितनी बिक्री</h2>
+      <p class="hint">कुल बिके मोमोज़ के हिसाब से। 🏆 = सबसे अच्छा दिन, 🔥 = औसत से काफ़ी ऊपर।</p>
+      <div class="best-box">
+        <div class="small">सबसे ज़्यादा बिक्री वाला दिन</div>
+        <div class="big">${best.map(d => esc(fmtDateFull(d.date))).join(" , ")}</div>
+        <div class="small">${qtyStr(maxSold)} मोमोज़ बिके · ${money(best[0].earn)} कमाई${best.length > 1 ? ' (बराबर बिक्री वाले दिन)' : ''}</div>
+        <div class="small" style="margin-top:4px;">रोज़ का औसत: ${qtyStr(avg)} बिके</div>
+      </div>
+      <div class="chip-row" style="margin-bottom:6px;">
+        <button class="chip ${salesSort === 'date' ? 'on' : ''}" data-sales="date">तारीख के हिसाब से</button>
+        <button class="chip ${salesSort === 'best' ? 'on' : ''}" data-sales="best">ज़्यादा बिक्री पहले</button>
+      </div>
+      ${rows}`;
+    box.querySelectorAll("[data-sales]").forEach(b => b.addEventListener("click", () => {
+      salesSort = b.getAttribute("data-sales");
+      renderSalesDays();
+    }));
   }
 
   function sendRangeWhatsApp() {
@@ -1079,6 +1141,17 @@
       L.push("• " + it.name + ": बने " + qtyStr(it.made) + ", बिके " + qtyStr(it.sold) + ", कमाई " + money(it.earn));
     });
     L.push("• *कुल बने " + qtyStr(st.totals.made) + " | बिके " + qtyStr(st.totals.sold) + " | 💰 कमाई " + money(st.totals.earn) + "*");
+    const sdays = st.days || [];
+    if (sdays.length) {
+      const mx = Math.max.apply(null, sdays.map(d => d.sold));
+      L.push("");
+      L.push("🏆 *किस दिन कितनी बिक्री*");
+      sdays.forEach(d => {
+        L.push("• " + fmtDate(d.date) + ": " + qtyStr(d.sold) + " बिके, " + money(d.earn) + (mx > 0 && d.sold === mx ? " 🏆" : ""));
+      });
+      const bd = sdays.filter(d => d.sold === mx).map(d => fmtDateFull(d.date)).join(", ");
+      L.push("• *सबसे अच्छा दिन: " + bd + " (" + qtyStr(mx) + " बिके)*");
+    }
     L.push("");
     L.push("✅ हिसाब Crave Kitchen WebApp से बनाया गया है।");
 
