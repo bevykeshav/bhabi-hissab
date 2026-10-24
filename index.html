@@ -121,6 +121,11 @@
     border:1.5px solid var(--line); border-radius:8px; background:var(--paper); color:var(--ink); width:100%; }
   .chip-row { display:flex; gap:6px; flex-wrap:wrap; margin:4px 0 4px; }
   .chip-row button.chip { min-height:36px; }
+  .detail-toggle { font-size:11px; font-weight:600; color:var(--green); cursor:pointer; margin-top:2px;
+    -webkit-tap-highlight-color:transparent; user-select:none; }
+  .detail-row td { background:var(--green-soft); font-size:12.5px; padding:8px 10px; }
+  .detail-line { display:flex; justify-content:space-between; gap:8px; padding:3px 0; border-bottom:1px dashed var(--line); }
+  .detail-line:last-child { border-bottom:none; }
   .sub-title { font-weight:800; font-size:14px; margin:16px 0 6px; color:var(--green); }
 
   html { -webkit-text-size-adjust:100%; }
@@ -923,6 +928,17 @@
     loadRange();
   }));
   document.getElementById("rangeLoadBtn").addEventListener("click", loadRange);
+  // "कब-कब देखें" पर क्लिक करने पर तारीख-वार details खुलें/बंद हों
+  document.getElementById("rangeResult").addEventListener("click", (ev) => {
+    const tg = ev.target.closest(".detail-toggle");
+    if (!tg) return;
+    const row = document.getElementById(tg.getAttribute("data-target"));
+    if (!row) return;
+    const open = row.style.display === "none";
+    row.style.display = open ? "table-row" : "none";
+    const word = tg.textContent.indexOf("दिन") > -1 ? "दिन" : "बार आया";
+    tg.textContent = tg.getAttribute("data-count") + " " + word + (open ? " — बंद करें ▴" : " — कब-कब देखें ▾");
+  });
 
   async function loadRange() {
     const from = document.getElementById("rangeFrom").value || todayStr();
@@ -955,11 +971,18 @@
 
     const itemCards = SECTIONS.map(s => {
       const arr = (r.items && r.items[s.key]) || [];
-      const rows = arr.map(it => `<tr>
-          <td class="name-cell">${esc(it.name)}</td>
+      const rows = arr.map((it, ix) => {
+        const dl = it.days || [];
+        const lines = dl.map(x => `<div class="detail-line"><span>📅 ${esc(fmtDate(x.date))}</span><span>${qtyStr(x.qty)} ${esc(it.unit || "")} × ${money(x.rate)} = <b>${money(x.amount)}</b></span></div>`).join("");
+        const id = "det-" + s.key + "-" + ix;
+        return `<tr>
+          <td class="name-cell">${esc(it.name)}
+            <div class="detail-toggle" data-target="${id}" data-count="${dl.length}">${dl.length} बार आया — कब-कब देखें ▾</div></td>
           <td class="num">${qtyStr(it.qty)} ${esc(it.unit || "")}</td>
           <td class="num">${money(it.amount)}</td>
-        </tr>`).join("");
+        </tr>
+        <tr class="detail-row" id="${id}" style="display:none;"><td colspan="3">${lines}</td></tr>`;
+      }).join("");
       return `<div class="card">
         <h2>${esc(s.title)} — आइटम-वार कुल</h2>
         <div class="table-scroll"><table class="rtable">
@@ -971,12 +994,19 @@
     }).join("");
 
     const st = r.stock || { items: [], totals: { made: 0, sold: 0, earn: 0 } };
-    const stockRows = (st.items || []).map(it => `<tr>
-        <td class="name-cell">${esc(it.name)}</td>
+    const stockRows = (st.items || []).map((it, ix) => {
+      const dl = it.days || [];
+      const lines = dl.map(x => `<div class="detail-line"><span>📅 ${esc(fmtDate(x.date))}</span><span>बने ${qtyStr(x.made)} · बिके ${qtyStr(x.sold)} · <b>${money(x.earn)}</b></span></div>`).join("");
+      const id = "det-stock-" + ix;
+      return `<tr>
+        <td class="name-cell">${esc(it.name)}
+          <div class="detail-toggle" data-target="${id}" data-count="${dl.length}">${dl.length} दिन — कब-कब देखें ▾</div></td>
         <td class="num">${qtyStr(it.made)}</td>
         <td class="num">${qtyStr(it.sold)}</td>
         <td class="num earn-cell">${money(it.earn)}</td>
-      </tr>`).join("");
+      </tr>
+      <tr class="detail-row" id="${id}" style="display:none;"><td colspan="4">${lines}</td></tr>`;
+    }).join("");
 
     document.getElementById("rangeResult").innerHTML = `
       <div class="card">
