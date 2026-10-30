@@ -137,6 +137,10 @@
   .sale-row.best .sale-bar > i { background:var(--clay); }
   .sale-items { font-size:11.5px; color:var(--ink-soft); }
   .day-fest, .sale-fest { font-size:11.5px; font-weight:600; color:var(--clay); margin-top:1px; }
+  .auto-box { background:var(--green-soft); border-radius:8px; padding:10px; margin-top:4px; }
+  .auto-row { display:flex; justify-content:space-between; gap:8px; font-size:13px; padding:2px 0; }
+  .auto-row b { color:var(--green); font-variant-numeric:tabular-nums; }
+  .auto-hint { font-size:11px; color:var(--ink-soft); margin-top:4px; }
   .sub-title { font-weight:800; font-size:14px; margin:16px 0 6px; color:var(--green); }
 
   html { -webkit-text-size-adjust:100%; }
@@ -199,7 +203,12 @@
       <label for="mainDate">तारीख</label>
       <input type="date" id="mainDate">
       <label for="cashInput">आज कितना कैश आया ₹</label>
-      <input type="number" id="cashInput" min="0" step="1" placeholder="0">
+      <input type="number" id="cashInput" min="0" step="1" placeholder="0" style="margin-bottom:10px;">
+      <div class="auto-box">
+        <div class="auto-row"><span>आज की कुल बिक्री (मोमोज़ स्टॉक से)</span><b id="salesToday">₹0</b></div>
+        <div class="auto-row"><span>📲 ऑनलाइन आया (अपने-आप)</span><b id="onlineAuto">₹0</b></div>
+        <div class="auto-hint" id="onlineHint">ऑनलाइन = कुल बिक्री − कैश</div>
+      </div>
       <p class="cash-status" id="cashStatus"></p>
     </div>
     <div class="leftover-card" id="leftoverCard">
@@ -299,7 +308,7 @@
     switch (action) {
       case "getItems": return { items: (b.items[params.section] || []) };
       case "getEntries": return { entries: (b.entries[params.section] || []) };
-      case "getCash": return { cash: b.cash || 0 };
+      case "getCash": return { cash: b.cash || 0, online: b.online || 0 };
       case "getStockItems": return { items: b.stockItems || [] };
       case "getStockEntries":
         if (params.date === d) return { entries: b.stockEntries || [] };
@@ -361,6 +370,7 @@
       document.getElementById("cashInput").value = c.cash || "";
     } catch (e) {}
     updateLeftover();
+    updateOnline();
   }
   let cashSaveTimer = null;
   function scheduleCashSave() {
@@ -374,8 +384,39 @@
       catch (e) { statusEl.textContent = "⚠ " + e.message; statusEl.classList.add("err"); }
     }, 600);
   }
-  document.getElementById("cashInput").addEventListener("input", () => { updateLeftover(); scheduleCashSave(); });
-  document.getElementById("mainDate").addEventListener("change", () => { loadCash(); renderAllSections(); renderStock(); });
+  document.getElementById("cashInput").addEventListener("input", () => { updateLeftover(); updateOnline(); scheduleCashSave(); });
+
+  // ---- ऑनलाइन अपने-आप: आज की मोमोज़ बिक्री (स्टॉक से) − कैश ----
+  let todaySales = 0;
+  function updateOnline() {
+    const cash = parseFloat(document.getElementById("cashInput").value) || 0;
+    const online = Math.max(todaySales - cash, 0);
+    document.getElementById("salesToday").textContent = money(todaySales);
+    document.getElementById("onlineAuto").textContent = money(online);
+    const hint = document.getElementById("onlineHint");
+    if (!todaySales) hint.textContent = "पहले 📦 बना / बिका / बचा में आज का स्टॉक और रेट भरकर सेव करो।";
+    else if (cash > todaySales) hint.textContent = "कैश, बिक्री से ज़्यादा है — इसलिए ऑनलाइन ₹0।";
+    else hint.textContent = "ऑनलाइन = कुल बिक्री − कैश";
+  }
+  async function loadTodaySales() {
+    const date = currentDate();
+    try {
+      const [cur, prev] = await Promise.all([
+        call("getStockEntries", { date }),
+        safeCall("getStockEntries", { date: prevDateStr(date) })
+      ]);
+      const prevMap = {};
+      ((prev && prev.entries) || []).forEach(e => { prevMap[e.itemId] = Number(e.leftover) || 0; });
+      let total = 0;
+      ((cur && cur.entries) || []).forEach(e => {
+        const sold = (prevMap[e.itemId] || 0) + (Number(e.made) || 0) - (Number(e.leftover) || 0);
+        total += earnOf(sold, e.pcsPerPlate, e.rate);
+      });
+      todaySales = total;
+    } catch (err) { todaySales = 0; }
+    updateOnline();
+  }
+  document.getElementById("mainDate").addEventListener("change", () => { loadCash(); loadTodaySales(); renderAllSections(); renderStock(); });
 
   async function renderAllSections() {
     const container = document.getElementById("sections");
@@ -503,6 +544,7 @@
   }
 
   loadCash();
+  loadTodaySales();
   renderAllSections();
   renderStock();
 
@@ -607,6 +649,7 @@
         });
       }
 
+      const online = Math.max(earned - cash, 0);   // ऑनलाइन = बिक्री − कैश
       const lines = [
         "📋 *Crave Kitchen — आज का पूरा हिसाब*",
         "📅 *तारीख:* " + date,
@@ -619,8 +662,10 @@
         "",
         "💰 *कैश और खर्च*",
         "• आज का कैश: " + money(cash),
+        "• आज ऑनलाइन आया (बिक्री − कैश): " + money(online),
+        "• आज की कुल बिक्री (मोमोज़): " + money(earned),
         "• कुल सामान खर्च: " + money(expense),
-        "• बचा पैसा: " + money(cashLeft),
+        "• बचा पैसा (कैश − खर्च): " + money(cashLeft),
         "",
         stockLines.join("\n"),
         "",
@@ -783,6 +828,7 @@
       });
       try {
         await call("saveStockEntries", { payload: { date, entries } });
+        loadTodaySales();
         statusEl.textContent = "✓ सेव हो गया";
       } catch (e) { statusEl.textContent = "⚠ " + e.message; statusEl.classList.add("err"); }
     });
@@ -979,6 +1025,7 @@
     const dayRows = (r.days || []).map(d => `<tr>
         <td class="name-cell">${esc(fmtDate(d.date))}${festOf(d.date) ? '<div class="day-fest">🎉 ' + esc(festOf(d.date)) + '</div>' : ''}</td>
         <td class="num">${money(d.cash)}</td>
+        <td class="num">${money(d.online || 0)}</td>
         <td class="num">${money(d.expense)}</td>
         <td class="num ${d.leftover < 0 ? 'neg-text' : 'pos-text'}">${d.leftover < 0 ? '−' : ''}${money(Math.abs(d.leftover))}</td>
       </tr>`).join("");
@@ -1028,14 +1075,16 @@
         ${r.festSource === 'fixed' ? '<p class="warn">⚠ त्योहार Google calendar से नहीं आ पाए। Apps Script में authorizeCalendar चलाकर दोबारा Deploy करो, या Sheet के "Festivals" टैब में तारीख़ और नाम खुद लिख दो।</p>' : ''}
         <div class="stock-summary" style="margin-top:10px;">
           <div class="stock-stat"><div class="label">कुल कैश आया</div><div class="value">${money(t.cash)}</div></div>
+          <div class="stock-stat"><div class="label">कुल ऑनलाइन (बिक्री − कैश)</div><div class="value">${money(t.online || 0)}</div></div>
           <div class="stock-stat"><div class="label">कुल सामान खर्च</div><div class="value">${money(t.expense)}</div></div>
-          <div class="stock-stat earn ${negTotal ? 'neg' : ''}"><div class="label">💰 कुल बचा पैसा (रोज़ का बचा जोड़कर)</div><div class="value">${negTotal ? '−' : ''}${money(Math.abs(t.leftover))}</div></div>
+          <div class="stock-stat"><div class="label">कुल आमदनी (कैश + ऑनलाइन)</div><div class="value">${money((t.cash || 0) + (t.online || 0))}</div></div>
+          <div class="stock-stat earn ${negTotal ? 'neg' : ''}"><div class="label">💰 कुल बचा पैसा (कैश − खर्च, रोज़ का जोड़कर)</div><div class="value">${negTotal ? '−' : ''}${money(Math.abs(t.leftover))}</div></div>
         </div>
         <div class="sub-title">📅 रोज़ का बचा पैसा</div>
         <div class="table-scroll"><table class="rtable">
-          <thead><tr><th>तारीख</th><th class="num">कैश</th><th class="num">खर्च</th><th class="num">बचा</th></tr></thead>
-          <tbody>${dayRows || '<tr><td colspan="4" class="muted">इस रेंज में कोई कैश/खर्च नहीं मिला।</td></tr>'}</tbody>
-          <tfoot><tr class="total-row"><td>कुल</td><td class="num">${money(t.cash)}</td><td class="num">${money(t.expense)}</td><td class="num">${negTotal ? '−' : ''}${money(Math.abs(t.leftover))}</td></tr></tfoot>
+          <thead><tr><th>तारीख</th><th class="num">कैश</th><th class="num">ऑनलाइन</th><th class="num">खर्च</th><th class="num">बचा</th></tr></thead>
+          <tbody>${dayRows || '<tr><td colspan="5" class="muted">इस रेंज में कोई कैश/खर्च नहीं मिला।</td></tr>'}</tbody>
+          <tfoot><tr class="total-row"><td>कुल</td><td class="num">${money(t.cash)}</td><td class="num">${money(t.online || 0)}</td><td class="num">${money(t.expense)}</td><td class="num">${negTotal ? '−' : ''}${money(Math.abs(t.leftover))}</td></tr></tfoot>
         </table></div>
       </div>
       ${itemCards}
@@ -1121,13 +1170,15 @@
     L.push("");
     L.push("💰 *कैश और बचा पैसा*");
     L.push("• कुल कैश आया: " + money(t.cash));
+    L.push("• कुल ऑनलाइन आया: " + money(t.online || 0));
+    L.push("• *कुल आमदनी (कैश + ऑनलाइन): " + money((t.cash || 0) + (t.online || 0)) + "*");
     L.push("• कुल सामान खर्च: " + money(t.expense));
     L.push("• *कुल बचा पैसा: " + sgn(t.leftover) + "*");
     L.push("");
     L.push("📅 *रोज़ का बचा पैसा*");
     if (!(r.days || []).length) L.push("• कोई एंट्री नहीं");
     (r.days || []).forEach(d => {
-      L.push("• " + fmtDate(d.date) + ": कैश " + money(d.cash) + " − खर्च " + money(d.expense) + " = *" + sgn(d.leftover) + "*" + (festOf(d.date) ? " 🎉 " + festOf(d.date) : ""));
+      L.push("• " + fmtDate(d.date) + ": कैश " + money(d.cash) + " − खर्च " + money(d.expense) + " = *" + sgn(d.leftover) + "*" + (d.online ? " | ऑनलाइन " + money(d.online) : "") + (festOf(d.date) ? " 🎉 " + festOf(d.date) : ""));
     });
 
     SECTIONS.forEach(s => {
