@@ -141,6 +141,11 @@
   .auto-row { display:flex; justify-content:space-between; gap:8px; font-size:13px; padding:2px 0; }
   .auto-row b { color:var(--green); font-variant-numeric:tabular-nums; }
   .auto-hint { font-size:11px; color:var(--ink-soft); margin-top:4px; }
+  .creamy-box { border-top:1px dashed var(--line); margin-top:14px; padding-top:10px; }
+  .creamy-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .creamy-grid label { display:block; font-size:12px; font-weight:700; margin-bottom:3px; color:var(--ink-soft); }
+  .creamy-grid input, .creamy-grid select { width:100%; font-size:16px; padding:8px; border:1.5px solid var(--line);
+    border-radius:6px; background:var(--paper); color:var(--ink); min-height:44px; }
   .sub-title { font-weight:800; font-size:14px; margin:16px 0 6px; color:var(--green); }
 
   html { -webkit-text-size-adjust:100%; }
@@ -309,6 +314,7 @@
       case "getItems": return { items: (b.items[params.section] || []) };
       case "getEntries": return { entries: (b.entries[params.section] || []) };
       case "getCash": return { cash: b.cash || 0, online: b.online || 0 };
+      case "getCreamy": return { creamy: b.creamy || null, prev: b.creamyPrev || null };
       case "getStockItems": return { items: b.stockItems || [] };
       case "getStockEntries":
         if (params.date === d) return { entries: b.stockEntries || [] };
@@ -317,7 +323,7 @@
     }
     return null;
   }
-  const BOOT_READS = /^(getItems|getEntries|getCash|getStockItems|getStockEntries)$/;
+  const BOOT_READS = /^(getItems|getEntries|getCash|getStockItems|getStockEntries|getCreamy)$/;
 
   async function call(action, extra) {
     const params = Object.assign({ action }, extra || {});
@@ -401,17 +407,21 @@
   async function loadTodaySales() {
     const date = currentDate();
     try {
-      const [cur, prev] = await Promise.all([
+      const [cur, prev, cres] = await Promise.all([
         call("getStockEntries", { date }),
-        safeCall("getStockEntries", { date: prevDateStr(date) })
+        safeCall("getStockEntries", { date: prevDateStr(date) }),
+        safeCall("getCreamy", { date })
       ]);
+      const cm = cres && cres.creamy;
       const prevMap = {};
       ((prev && prev.entries) || []).forEach(e => { prevMap[e.itemId] = Number(e.leftover) || 0; });
       let total = 0;
       ((cur && cur.entries) || []).forEach(e => {
         const sold = (prevMap[e.itemId] || 0) + (Number(e.made) || 0) - (Number(e.leftover) || 0);
-        total += earnOf(sold, e.pcsPerPlate, e.rate);
+        const pl = (cm && String(cm.baseItemId) === String(e.itemId)) ? cm.plates : 0;
+        total += plateEarn(sold, e.pcsPerPlate, e.rate, pl);
       });
+      if (cm && cm.plates > 0) total += cm.plates * cm.rate;
       todaySales = total;
     } catch (err) { todaySales = 0; }
     updateOnline();
@@ -560,6 +570,11 @@
     return new Date(d - tz).toISOString().slice(0, 10);
   }
 
+  // क्रीमी की हर प्लेट में 1 प्लेट पनीर मोमोज़ लगती है, इसलिए पनीर की सादी प्लेटें = कुल प्लेटें − क्रीमी प्लेटें
+  function plateEarn(sold, pcs, rate, creamyPlates) {
+    const p = Number(pcs) > 0 ? Number(pcs) : 1;
+    return Math.max(Math.max(Number(sold) || 0, 0) / p - (Number(creamyPlates) || 0), 0) * (Number(rate) || 0);
+  }
   function earnOf(sold, pcs, rate) {
     const p = Number(pcs) > 0 ? Number(pcs) : 1;
     return Math.max(Number(sold) || 0, 0) / p * (Number(rate) || 0);
@@ -573,7 +588,7 @@
     try {
       const date = currentDate();
 
-      const [cashRes, dailyRes, momosRes, packingRes, stockRes, stockPrevRes, stockItemsRes] =
+      const [cashRes, dailyRes, momosRes, packingRes, stockRes, stockPrevRes, stockItemsRes, creamyRes] =
         await Promise.all([
           call("getCash", { date }),
           call("getEntries", { section: "daily", date }),
@@ -581,7 +596,8 @@
           call("getEntries", { section: "packing", date }),
           call("getStockEntries", { date }),
           safeCall("getStockEntries", { date: prevDateStr(date) }),
-          call("getStockItems")
+          call("getStockItems"),
+          safeCall("getCreamy", { date })
         ]);
 
       const money = v => "₹" + Math.round(Number(v) || 0).toLocaleString("en-IN");
@@ -634,7 +650,8 @@
           const pcs = e ? Number(e.pcsPerPlate) || 0 : 0;
           const a = prev + m;
           const s = a - l;
-          const earn = earnOf(s, pcs, r);
+          const plW = (creamyRes && creamyRes.creamy && String(creamyRes.creamy.baseItemId) === String(it.id)) ? creamyRes.creamy.plates : 0;
+          const earn = plateEarn(s, pcs, r, plW);
 
           made += m; sold += s; leftover += l; available += a; earned += earn;
 
@@ -649,6 +666,14 @@
         });
       }
 
+      const cmW = creamyRes && creamyRes.creamy;
+      if (cmW && cmW.plates > 0) {
+        const ceW = cmW.plates * cmW.rate;
+        earned += ceW;
+        stockLines.push("• *🥣 क्रीमी मोमोज़*");
+        stockLines.push("  आज बिकी: " + cmW.plates + " प्लेट × " + money(cmW.rate));
+        stockLines.push("  💰 क्रीमी की कमाई: " + money(ceW));
+      }
       const online = Math.max(earned - cash, 0);   // ऑनलाइन = बिक्री − कैश
       const lines = [
         "📋 *Crave Kitchen — आज का पूरा हिसाब*",
@@ -695,11 +720,12 @@
     const date = currentDate();
     const cardEl = document.getElementById("stockCard");
     cardEl.innerHTML = '<p class="muted">लोड हो रहा है…</p>';
-    let masterRes, entriesRes, prevRes;
+    let masterRes, entriesRes, prevRes, creamyRes;
     try {
-      [masterRes, entriesRes, prevRes] = await Promise.all([
+      [masterRes, entriesRes, prevRes, creamyRes] = await Promise.all([
         call("getStockItems"), call("getStockEntries", { date }),
-        safeCall("getStockEntries", { date: prevDateStr(date) })
+        safeCall("getStockEntries", { date: prevDateStr(date) }),
+        safeCall("getCreamy", { date })
       ]);
     } catch (e) {
       cardEl.innerHTML = `<h2>बना / बिका / बचा स्टॉक</h2><p class="warn">⚠ लोड नहीं हो पाया।</p>
@@ -718,6 +744,19 @@
       prevRate[e.itemId] = e.rate;
       prevPcs[e.itemId] = e.pcsPerPlate;
     });
+
+    // क्रीमी की सेव/कल की वैल्यू (रेट और सामान-लागत कल की अपने-आप भर जाएगी)
+    const cToday = creamyRes && creamyRes.creamy;
+    const cPrev = creamyRes && creamyRes.prev;
+    const cSrc = cToday || cPrev || {};
+    const cPlatesVal = cToday ? (cToday.plates || '') : '';
+    const cRateVal = cSrc.rate || 150;
+    const cCostVal = cSrc.cost || 70;
+    let cBaseId = cSrc.baseItemId || '';
+    if (!items.some(it => String(it.id) === String(cBaseId))) {
+      const guess = items.find(it => /पनीर|paneer/i.test(it.name)) || items[0];
+      cBaseId = guess ? guess.id : '';
+    }
 
     let rows = items.map(it => {
       const ex = existing[it.id];
@@ -754,6 +793,18 @@
           <tbody id="stockBody">${rows || '<tr><td colspan="9" class="muted">कोई सक्रिय आइटम नहीं है।</td></tr>'}</tbody>
         </table>
       </div>
+      <div class="creamy-box">
+        <div class="sub-title" style="margin-top:4px;">🥣 क्रीमी मोमोज़</div>
+        <p class="hint" style="margin-bottom:8px;">क्रीमी की 1 प्लेट में 1 प्लेट पनीर मोमोज़ लगती है। आज कितनी क्रीमी प्लेट बिकी, वो यहाँ भरो — पनीर की उतनी प्लेटें सादी बिक्री से घट जाएँगी और क्रीमी की कमाई उसके अपने ₹/प्लेट से जुड़ेगी।</p>
+        <div class="creamy-grid">
+          <div><label for="creamyPlates">आज क्रीमी प्लेट बिकी</label><input type="number" id="creamyPlates" min="0" step="1" value="${cPlatesVal}" placeholder="0"></div>
+          <div><label for="creamyRate">क्रीमी ₹/प्लेट</label><input type="number" id="creamyRate" min="0" step="0.01" value="${cRateVal}"></div>
+          <div><label for="creamyCost">क्रीमी का अलग सामान ₹/प्लेट</label><input type="number" id="creamyCost" min="0" step="0.01" value="${cCostVal}"></div>
+          <div><label for="creamyBase">कौन सा मोमोज़ लगता है</label>
+            <select id="creamyBase">${items.map(it => `<option value="${esc(it.id)}" ${String(it.id) === String(cBaseId) ? 'selected' : ''}>${esc(it.name)}</option>`).join("")}</select></div>
+        </div>
+        <p class="whatsapp-hint" id="creamyLine" style="font-weight:700;"></p>
+      </div>
       <button class="primary" id="saveStockBtn">सेव करें</button>
       <button class="whatsapp-btn" id="whatsappStockBtn">📲 WhatsApp पर आज का पूरा हिसाब भेजें</button>
       <p class="whatsapp-hint">पहले सेव करें, फिर WhatsApp बटन दबाकर पूरा हिसाब शेयर करें।</p>
@@ -777,6 +828,10 @@
       </div>`;
 
     const body = document.getElementById("stockBody");
+    const cBase = () => document.getElementById("creamyBase").value;
+    const cPlates = () => parseFloat(document.getElementById("creamyPlates").value) || 0;
+    const cRate = () => parseFloat(document.getElementById("creamyRate").value) || 0;
+    const cCost = () => parseFloat(document.getElementById("creamyCost").value) || 0;
     function recalcStock() {
       let madeTotal = 0, availableTotal = 0, leftoverTotal = 0, soldTotal = 0, earnTotal = 0;
       body.querySelectorAll("tr[data-id]").forEach(tr => {
@@ -787,7 +842,8 @@
         const rate = parseFloat(tr.querySelector(".rate-input").value) || 0;
         const available = prev + made;
         const sold = available - leftover;
-        const earn = earnOf(sold, pcs, rate);
+        const plates = String(tr.getAttribute("data-id")) === String(cBase()) ? cPlates() : 0;
+        const earn = plateEarn(sold, pcs, rate, plates);
         tr.querySelector(".available-cell").textContent = available;
         tr.querySelector(".sold-cell").textContent = sold;
         tr.querySelector(".earn-cell").textContent = money(earn);
@@ -805,11 +861,20 @@
       set("stockAvailableTotal", availableTotal);
       set("stockLeftoverTotal", leftoverTotal);
       set("stockSoldTotal", soldTotal);
+      const cEarn = cPlates() * cRate();
+      const cCostTotal = cPlates() * cCost();
+      earnTotal += cEarn;
       set("stockEarnTotal", money(earnTotal));
+      set("creamyLine", cPlates() ? "🥣 क्रीमी: " + cPlates() + " प्लेट × " + money(cRate()) + " = " + money(cEarn) + "  |  अलग सामान लागत " + money(cCostTotal) + "  |  क्रीमी से बचत " + money(cEarn - cCostTotal) : "");
     }
     recalcStock();
     body.querySelectorAll("tr[data-id]").forEach(tr => {
       tr.querySelectorAll("input").forEach(inp => inp.addEventListener("input", recalcStock));
+    });
+    ["creamyPlates", "creamyRate", "creamyCost", "creamyBase"].forEach(id => {
+      const el = document.getElementById(id);
+      el.addEventListener("input", recalcStock);
+      el.addEventListener("change", recalcStock);
     });
 
     document.getElementById("saveStockBtn").addEventListener("click", async () => {
@@ -828,6 +893,7 @@
       });
       try {
         await call("saveStockEntries", { payload: { date, entries } });
+        await call("saveCreamy", { payload: { date, plates: cPlates(), rate: cRate(), cost: cCost(), baseItemId: cBase() } });
         loadTodaySales();
         statusEl.textContent = "✓ सेव हो गया";
       } catch (e) { statusEl.textContent = "⚠ " + e.message; statusEl.classList.add("err"); }
@@ -841,6 +907,8 @@
       try {
         // बैकएंड से ताज़ा सेव डेटा लो ताकि मैसेज में सेव की हुई वैल्यू जाएँ
         const latest = await call("getStockEntries", { date });
+        const lcr = await safeCall("getCreamy", { date });
+        const cmS = lcr && lcr.creamy;
         const saved = {};
         (latest.entries || []).forEach(e => { saved[e.itemId] = e; });
 
@@ -861,7 +929,8 @@
           const pcs = e ? Number(e.pcsPerPlate) || 0 : 0;
           const available = prev + made;
           const sold = available - leftover;
-          const earn = earnOf(sold, pcs, rate);
+          const plS = (cmS && String(cmS.baseItemId) === String(it.id)) ? cmS.plates : 0;
+          const earn = plateEarn(sold, pcs, rate, plS);
 
           if (made || leftover || prev) hasData = true;
 
@@ -881,6 +950,16 @@
           lines.push("   • 💰 कमाई: " + money(earn));
           lines.push("");
         });
+
+        if (cmS && cmS.plates > 0) {
+          const ceS = cmS.plates * cmS.rate;
+          totalEarn += ceS;
+          hasData = true;
+          lines.push("🥣 *क्रीमी मोमोज़*");
+          lines.push("   • आज बिकी: " + cmS.plates + " प्लेट × " + money(cmS.rate));
+          lines.push("   • 💰 कमाई: " + money(ceS));
+          lines.push("");
+        }
 
         lines.push("📊 *कुल हिसाब*");
         lines.push("• आज बना: " + totalMade);
@@ -1095,6 +1174,7 @@
           <tbody>${stockRows || '<tr><td colspan="4" class="muted">इस रेंज में कोई स्टॉक एंट्री नहीं।</td></tr>'}</tbody>
           <tfoot><tr class="total-row"><td>कुल</td><td class="num">${qtyStr(st.totals.made)}</td><td class="num">${qtyStr(st.totals.sold)}</td><td class="num">${money(st.totals.earn)}</td></tr></tfoot>
         </table></div>
+        ${(st.creamy && st.creamy.plates > 0) ? '<p class="whatsapp-hint" style="font-weight:700;">🥣 क्रीमी: ' + qtyStr(st.creamy.plates) + ' प्लेट · कमाई ' + money(st.creamy.earn) + ' · अलग सामान लागत ' + money(st.creamy.cost) + ' · बचत ' + money(st.creamy.earn - st.creamy.cost) + '</p>' : ''}
       </div>
       <div class="card" id="salesDaysCard"></div>
       <div class="card">
