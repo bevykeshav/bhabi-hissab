@@ -167,7 +167,7 @@
   .tab-btn { min-width:0; padding:10px 6px; font-size:13px; }
   .table-scroll { margin-left:-4px; margin-right:-4px; }
   table { min-width:620px; }
-  table.stock-table { min-width:860px; }
+  table.stock-table { min-width:940px; }
   table.rtable { min-width:0; }
   table.rtable-wide { min-width:480px; }
   .stock-summary { grid-template-columns:repeat(2,1fr); }
@@ -209,10 +209,12 @@
       <input type="date" id="mainDate">
       <label for="cashInput">आज कितना कैश आया ₹</label>
       <input type="number" id="cashInput" min="0" step="1" placeholder="0" style="margin-bottom:10px;">
+      <label for="onlineInput">आज कितना ऑनलाइन आया ₹</label>
+      <input type="number" id="onlineInput" min="0" step="1" placeholder="0">
       <div class="auto-box">
-        <div class="auto-row"><span>आज की कुल बिक्री (मोमोज़ स्टॉक से)</span><b id="salesToday">₹0</b></div>
-        <div class="auto-row"><span>📲 ऑनलाइन आया (अपने-आप)</span><b id="onlineAuto">₹0</b></div>
-        <div class="auto-hint" id="onlineHint">ऑनलाइन = कुल बिक्री − कैश</div>
+        <div class="auto-row"><span>कुल बिक्री (कैश + ऑनलाइन)</span><b id="totalSaleActual">₹0</b></div>
+        <div class="auto-row"><span>स्टॉक के हिसाब से बिक्री</span><b id="salesToday">₹0</b></div>
+        <div class="auto-hint" id="onlineHint"></div>
       </div>
       <p class="cash-status" id="cashStatus"></p>
     </div>
@@ -374,6 +376,7 @@
     try {
       const c = await call("getCash", { date });
       document.getElementById("cashInput").value = c.cash || "";
+      document.getElementById("onlineInput").value = c.online || "";
     } catch (e) {}
     updateLeftover();
     updateOnline();
@@ -385,24 +388,29 @@
     cashSaveTimer = setTimeout(async () => {
       const date = currentDate();
       const cash = parseFloat(document.getElementById("cashInput").value) || 0;
+      const online = parseFloat(document.getElementById("onlineInput").value) || 0;
       statusEl.textContent = "सेव हो रहा है…"; statusEl.classList.remove("err");
-      try { await call("saveCash", { payload: { date, cash } }); statusEl.textContent = "✓ सेव हो गया"; }
+      try { await call("saveCash", { payload: { date, cash, online } }); statusEl.textContent = "✓ सेव हो गया"; }
       catch (e) { statusEl.textContent = "⚠ " + e.message; statusEl.classList.add("err"); }
     }, 600);
   }
   document.getElementById("cashInput").addEventListener("input", () => { updateLeftover(); updateOnline(); scheduleCashSave(); });
+  document.getElementById("onlineInput").addEventListener("input", () => { updateOnline(); scheduleCashSave(); });
 
   // ---- ऑनलाइन अपने-आप: आज की मोमोज़ बिक्री (स्टॉक से) − कैश ----
   let todaySales = 0;
   function updateOnline() {
     const cash = parseFloat(document.getElementById("cashInput").value) || 0;
-    const online = Math.max(todaySales - cash, 0);
+    const online = parseFloat(document.getElementById("onlineInput").value) || 0;
+    const actual = cash + online;
+    document.getElementById("totalSaleActual").textContent = money(actual);
     document.getElementById("salesToday").textContent = money(todaySales);
-    document.getElementById("onlineAuto").textContent = money(online);
     const hint = document.getElementById("onlineHint");
-    if (!todaySales) hint.textContent = "पहले 📦 बना / बिका / बचा में आज का स्टॉक और रेट भरकर सेव करो।";
-    else if (cash > todaySales) hint.textContent = "कैश, बिक्री से ज़्यादा है — इसलिए ऑनलाइन ₹0।";
-    else hint.textContent = "ऑनलाइन = कुल बिक्री − कैश";
+    const diff = actual - todaySales;
+    if (!todaySales) hint.textContent = "स्टॉक वाले टैब में आज का स्टॉक और रेट भरकर सेव करो, तब दोनों बिक्री का मिलान दिखेगा।";
+    else if (Math.abs(diff) < 1) hint.textContent = "✓ कैश + ऑनलाइन, स्टॉक के हिसाब से बिल्कुल बराबर है।";
+    else if (diff > 0) hint.textContent = "असली बिक्री स्टॉक से " + money(diff) + " ज़्यादा है।";
+    else hint.textContent = "असली बिक्री स्टॉक से " + money(-diff) + " कम है — खराब/खाया हुआ माल तो नहीं छूटा?";
   }
   async function loadTodaySales() {
     const date = currentDate();
@@ -417,7 +425,7 @@
       ((prev && prev.entries) || []).forEach(e => { prevMap[e.itemId] = Number(e.leftover) || 0; });
       let total = 0;
       ((cur && cur.entries) || []).forEach(e => {
-        const sold = (prevMap[e.itemId] || 0) + (Number(e.made) || 0) - (Number(e.leftover) || 0);
+        const sold = (prevMap[e.itemId] || 0) + (Number(e.made) || 0) - (Number(e.leftover) || 0) - (Number(e.waste) || 0);
         const pl = (cm && String(cm.baseItemId) === String(e.itemId)) ? cm.plates : 0;
         total += plateEarn(sold, e.pcsPerPlate, e.rate, pl);
       });
@@ -649,7 +657,8 @@
           const r = e ? Number(e.rate) || 0 : 0;
           const pcs = e ? Number(e.pcsPerPlate) || 0 : 0;
           const a = prev + m;
-          const s = a - l;
+          const w = e ? Number(e.waste) || 0 : 0;
+          const s = a - l - w;
           const plW = (creamyRes && creamyRes.creamy && String(creamyRes.creamy.baseItemId) === String(it.id)) ? creamyRes.creamy.plates : 0;
           const earn = plateEarn(s, pcs, r, plW);
 
@@ -661,6 +670,7 @@
           stockLines.push("  कुल उपलब्ध: " + a + " " + it.unit);
           stockLines.push("  आज बिका: " + s + " " + it.unit);
           stockLines.push("  आज बचा: " + l + " " + it.unit);
+          if (w) stockLines.push("  खराब / खाया: " + w + " " + it.unit);
           if (r) stockLines.push("  ₹/प्लेट: " + money(r) + (pcs ? " (" + pcs + " पीस/प्लेट)" : ""));
           stockLines.push("  💰 आज की कमाई: " + money(earn));
         });
@@ -674,7 +684,7 @@
         stockLines.push("  आज बिकी: " + cmW.plates + " प्लेट × " + money(cmW.rate));
         stockLines.push("  💰 क्रीमी की कमाई: " + money(ceW));
       }
-      const online = Math.max(earned - cash, 0);   // ऑनलाइन = बिक्री − कैश
+      const online = Number(cashRes.online) || 0;
       const lines = [
         "📋 *Crave Kitchen — आज का पूरा हिसाब*",
         "📅 *तारीख:* " + date,
@@ -687,8 +697,9 @@
         "",
         "💰 *कैश और खर्च*",
         "• आज का कैश: " + money(cash),
-        "• आज ऑनलाइन आया (बिक्री − कैश): " + money(online),
-        "• आज की कुल बिक्री (मोमोज़): " + money(earned),
+        "• आज ऑनलाइन आया: " + money(online),
+        "• कुल बिक्री (कैश + ऑनलाइन): " + money(cash + online),
+        "• स्टॉक के हिसाब से बिक्री: " + money(earned),
         "• कुल सामान खर्च: " + money(expense),
         "• बचा पैसा (कैश − खर्च): " + money(cashLeft),
         "",
@@ -770,6 +781,7 @@
         <td class="num"><input type="number" class="made-input" min="0" step="1" value="${ex?ex.made:''}" placeholder="0"></td>
         <td class="num available-cell">0</td>
         <td class="num"><input type="number" class="leftover-input" min="0" step="1" value="${ex?ex.leftover:''}" placeholder="0"></td>
+        <td class="num"><input type="number" class="waste-input" min="0" step="1" value="${ex && ex.waste ? ex.waste : ''}" placeholder="0"></td>
         <td class="num sold-cell">0</td>
         <td class="num"><input type="number" class="pcs-input" min="1" step="1" value="${pcsVal}" placeholder="10"></td>
         <td class="num"><input type="number" class="rate-input" min="0" step="0.01" value="${rateVal}" placeholder="0"></td>
@@ -784,13 +796,15 @@
         <div class="stock-stat"><div class="label">आज बने</div><div class="value" id="stockMadeTotal">0</div></div>
         <div class="stock-stat"><div class="label">कुल उपलब्ध</div><div class="value" id="stockAvailableTotal">0</div></div>
         <div class="stock-stat"><div class="label">आज बचे</div><div class="value" id="stockLeftoverTotal">0</div></div>
+        <div class="stock-stat"><div class="label">खराब / खाया</div><div class="value" id="stockWasteTotal">0</div></div>
         <div class="stock-stat"><div class="label">आज बिके</div><div class="value" id="stockSoldTotal">0</div></div>
         <div class="stock-stat earn"><div class="label">💰 आज की कमाई</div><div class="value" id="stockEarnTotal">₹0</div></div>
       </div>
+      <p class="whatsapp-hint" id="stockLossLine" style="margin-top:-6px;margin-bottom:10px;"></p>
       <div class="table-scroll">
         <table class="stock-table">
-          <thead><tr><th>आइटम</th><th class="num">कल बचे</th><th class="num">आज बने</th><th class="num">कुल उपलब्ध</th><th class="num">आज बचे</th><th class="num">आज बिके</th><th class="num">पीस/प्लेट</th><th class="num">₹/प्लेट</th><th class="num">कमाई ₹</th></tr></thead>
-          <tbody id="stockBody">${rows || '<tr><td colspan="9" class="muted">कोई सक्रिय आइटम नहीं है।</td></tr>'}</tbody>
+          <thead><tr><th>आइटम</th><th class="num">कल बचे</th><th class="num">आज बने</th><th class="num">कुल उपलब्ध</th><th class="num">आज बचे</th><th class="num">खराब / खाया</th><th class="num">आज बिके</th><th class="num">पीस/प्लेट</th><th class="num">₹/प्लेट</th><th class="num">कमाई ₹</th></tr></thead>
+          <tbody id="stockBody">${rows || '<tr><td colspan="10" class="muted">कोई सक्रिय आइटम नहीं है।</td></tr>'}</tbody>
         </table>
       </div>
       <div class="creamy-box">
@@ -833,15 +847,16 @@
     const cRate = () => parseFloat(document.getElementById("creamyRate").value) || 0;
     const cCost = () => parseFloat(document.getElementById("creamyCost").value) || 0;
     function recalcStock() {
-      let madeTotal = 0, availableTotal = 0, leftoverTotal = 0, soldTotal = 0, earnTotal = 0;
+      let madeTotal = 0, availableTotal = 0, leftoverTotal = 0, soldTotal = 0, earnTotal = 0, wasteTotal = 0, lossTotal = 0;
       body.querySelectorAll("tr[data-id]").forEach(tr => {
         const prev = parseFloat(tr.getAttribute("data-prev")) || 0;
         const made = parseFloat(tr.querySelector(".made-input").value) || 0;
         const leftover = parseFloat(tr.querySelector(".leftover-input").value) || 0;
+        const waste = parseFloat(tr.querySelector(".waste-input").value) || 0;
         const pcs = parseFloat(tr.querySelector(".pcs-input").value) || 0;
         const rate = parseFloat(tr.querySelector(".rate-input").value) || 0;
         const available = prev + made;
-        const sold = available - leftover;
+        const sold = available - leftover - waste;
         const plates = String(tr.getAttribute("data-id")) === String(cBase()) ? cPlates() : 0;
         const earn = plateEarn(sold, pcs, rate, plates);
         tr.querySelector(".available-cell").textContent = available;
@@ -852,6 +867,8 @@
         leftoverTotal += leftover;
         soldTotal += sold;
         earnTotal += earn;
+        wasteTotal += waste;
+        lossTotal += waste / (pcs > 0 ? pcs : 1) * rate;
       });
       const set = (id, value) => {
         const el = document.getElementById(id);
@@ -861,6 +878,8 @@
       set("stockAvailableTotal", availableTotal);
       set("stockLeftoverTotal", leftoverTotal);
       set("stockSoldTotal", soldTotal);
+      set("stockWasteTotal", wasteTotal);
+      set("stockLossLine", wasteTotal ? "खराब / खाए हुए माल का अनुमानित नुकसान: " + money(lossTotal) : "");
       const cEarn = cPlates() * cRate();
       const cCostTotal = cPlates() * cCost();
       earnTotal += cEarn;
@@ -887,6 +906,7 @@
           itemName: tr.querySelector(".name-cell").childNodes[0].textContent.trim(),
           made: parseFloat(tr.querySelector(".made-input").value) || 0,
           leftover: parseFloat(tr.querySelector(".leftover-input").value) || 0,
+          waste: parseFloat(tr.querySelector(".waste-input").value) || 0,
           rate: parseFloat(tr.querySelector(".rate-input").value) || 0,
           pcsPerPlate: parseFloat(tr.querySelector(".pcs-input").value) || 0
         });
@@ -928,7 +948,8 @@
           const rate = e ? Number(e.rate) || 0 : 0;
           const pcs = e ? Number(e.pcsPerPlate) || 0 : 0;
           const available = prev + made;
-          const sold = available - leftover;
+          const waste = e ? Number(e.waste) || 0 : 0;
+          const sold = available - leftover - waste;
           const plS = (cmS && String(cmS.baseItemId) === String(it.id)) ? cmS.plates : 0;
           const earn = plateEarn(sold, pcs, rate, plS);
 
@@ -946,6 +967,7 @@
           lines.push("   • कुल उपलब्ध: " + available + " " + it.unit);
           lines.push("   • आज बिका: " + sold + " " + it.unit);
           lines.push("   • आज बचा: " + leftover + " " + it.unit);
+          if (waste) lines.push("   • खराब / खाया: " + waste + " " + it.unit);
           if (rate) lines.push("   • ₹/प्लेट: ₹" + Math.round(rate * 100) / 100 + (pcs ? " (" + pcs + " पीस/प्लेट)" : ""));
           lines.push("   • 💰 कमाई: " + money(earn));
           lines.push("");
@@ -1136,7 +1158,7 @@
     const st = r.stock || { items: [], totals: { made: 0, sold: 0, earn: 0 } };
     const stockRows = (st.items || []).map((it, ix) => {
       const dl = it.days || [];
-      const lines = dl.map(x => `<div class="detail-line"><span>📅 ${esc(fmtDate(x.date))}</span><span>बने ${qtyStr(x.made)} · बिके ${qtyStr(x.sold)} · <b>${money(x.earn)}</b></span></div>`).join("");
+      const lines = dl.map(x => `<div class="detail-line"><span>📅 ${esc(fmtDate(x.date))}</span><span>बने ${qtyStr(x.made)} · बिके ${qtyStr(x.sold)}${x.waste ? ' · खराब ' + qtyStr(x.waste) : ''} · <b>${money(x.earn)}</b></span></div>`).join("");
       const id = "det-stock-" + ix;
       return `<tr>
         <td class="name-cell">${esc(it.name)}
@@ -1154,7 +1176,7 @@
         ${r.festSource === 'fixed' ? '<p class="warn">⚠ त्योहार Google calendar से नहीं आ पाए। Apps Script में authorizeCalendar चलाकर दोबारा Deploy करो, या Sheet के "Festivals" टैब में तारीख़ और नाम खुद लिख दो।</p>' : ''}
         <div class="stock-summary" style="margin-top:10px;">
           <div class="stock-stat"><div class="label">कुल कैश आया</div><div class="value">${money(t.cash)}</div></div>
-          <div class="stock-stat"><div class="label">कुल ऑनलाइन (बिक्री − कैश)</div><div class="value">${money(t.online || 0)}</div></div>
+          <div class="stock-stat"><div class="label">कुल ऑनलाइन आया</div><div class="value">${money(t.online || 0)}</div></div>
           <div class="stock-stat"><div class="label">कुल सामान खर्च</div><div class="value">${money(t.expense)}</div></div>
           <div class="stock-stat"><div class="label">कुल आमदनी (कैश + ऑनलाइन)</div><div class="value">${money((t.cash || 0) + (t.online || 0))}</div></div>
           <div class="stock-stat earn ${negTotal ? 'neg' : ''}"><div class="label">💰 कुल बचा पैसा (कैश − खर्च, रोज़ का जोड़कर)</div><div class="value">${negTotal ? '−' : ''}${money(Math.abs(t.leftover))}</div></div>
@@ -1174,6 +1196,7 @@
           <tbody>${stockRows || '<tr><td colspan="4" class="muted">इस रेंज में कोई स्टॉक एंट्री नहीं।</td></tr>'}</tbody>
           <tfoot><tr class="total-row"><td>कुल</td><td class="num">${qtyStr(st.totals.made)}</td><td class="num">${qtyStr(st.totals.sold)}</td><td class="num">${money(st.totals.earn)}</td></tr></tfoot>
         </table></div>
+        ${st.totals.waste ? '<p class="whatsapp-hint" style="font-weight:700;">🗑 खराब / खाया कुल: ' + qtyStr(st.totals.waste) + '</p>' : ''}
         ${(st.creamy && st.creamy.plates > 0) ? '<p class="whatsapp-hint" style="font-weight:700;">🥣 क्रीमी: ' + qtyStr(st.creamy.plates) + ' प्लेट · कमाई ' + money(st.creamy.earn) + ' · अलग सामान लागत ' + money(st.creamy.cost) + ' · बचत ' + money(st.creamy.earn - st.creamy.cost) + '</p>' : ''}
       </div>
       <div class="card" id="salesDaysCard"></div>
@@ -1280,6 +1303,7 @@
       L.push("• " + it.name + ": बने " + qtyStr(it.made) + ", बिके " + qtyStr(it.sold) + ", कमाई " + money(it.earn));
     });
     L.push("• *कुल बने " + qtyStr(st.totals.made) + " | बिके " + qtyStr(st.totals.sold) + " | 💰 कमाई " + money(st.totals.earn) + "*");
+    if (st.totals.waste) L.push("• 🗑 खराब / खाया: " + qtyStr(st.totals.waste));
     const sdays = st.days || [];
     if (sdays.length) {
       const mx = Math.max.apply(null, sdays.map(d => d.sold));
