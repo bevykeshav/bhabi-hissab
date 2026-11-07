@@ -427,7 +427,7 @@
       ((cur && cur.entries) || []).forEach(e => {
         const sold = (prevMap[e.itemId] || 0) + (Number(e.made) || 0) - (Number(e.leftover) || 0) - (Number(e.waste) || 0);
         const pl = (cm && String(cm.baseItemId) === String(e.itemId)) ? cm.plates : 0;
-        total += plateEarn(sold, e.pcsPerPlate, e.rate, pl);
+        total += plateEarn(sold, e.pcsPerPlate, e.rate, pl) + (Number(e.fried) || 0) * (Number(e.friedRate) || 0);
       });
       if (cm && cm.plates > 0) total += cm.plates * cm.rate;
       todaySales = total;
@@ -660,7 +660,9 @@
           const w = e ? Number(e.waste) || 0 : 0;
           const s = a - l - w;
           const plW = (creamyRes && creamyRes.creamy && String(creamyRes.creamy.baseItemId) === String(it.id)) ? creamyRes.creamy.plates : 0;
-          const earn = plateEarn(s, pcs, r, plW);
+          const frW = e ? Number(e.fried) || 0 : 0;
+          const frRW = e ? Number(e.friedRate) || 0 : 0;
+          const earn = plateEarn(s, pcs, r, plW) + frW * frRW;
 
           made += m; sold += s; leftover += l; available += a; earned += earn;
 
@@ -672,6 +674,7 @@
           stockLines.push("  आज बचा: " + l + " " + it.unit);
           if (w) stockLines.push("  खराब / खाया: " + w + " " + it.unit);
           if (r) stockLines.push("  ₹/प्लेट: " + money(r) + (pcs ? " (" + pcs + " पीस/प्लेट)" : ""));
+          if (frW) stockLines.push("  🍳 फ्राइड: " + frW + " प्लेट × " + money(frRW) + " एक्स्ट्रा");
           stockLines.push("  💰 आज की कमाई: " + money(earn));
         });
       }
@@ -769,6 +772,11 @@
       cBaseId = guess ? guess.id : '';
     }
 
+    // फ्राइड का एक्स्ट्रा ₹/प्लेट — आज का सेव है तो वही, वरना कल का, वरना 10
+    const anyFriedToday = Object.keys(existing).map(k => existing[k]).find(x => Number(x.friedRate) > 0);
+    const anyFriedPrev = ((prevRes && prevRes.entries) || []).find(x => Number(x.friedRate) > 0);
+    const friedRateVal = anyFriedToday ? anyFriedToday.friedRate : (anyFriedPrev ? anyFriedPrev.friedRate : 10);
+
     let rows = items.map(it => {
       const ex = existing[it.id];
       const yesterday = prevLeftover[it.id] || 0;
@@ -808,6 +816,15 @@
         </table>
       </div>
       <div class="creamy-box">
+        <div class="sub-title" style="margin-top:4px;">🍳 फ्राइड मोमोज़</div>
+        <p class="hint" style="margin-bottom:8px;">ग्राहक फ्राइड मँगाए तो हर प्लेट पर एक्स्ट्रा पैसे मिलते हैं। हर आइटम की कितनी प्लेट फ्राइड बिकी वो भरो — ये प्लेटें ऊपर "आज बिके" में पहले से गिनी हुई हैं, यहाँ सिर्फ़ एक्स्ट्रा ₹ कमाई में जुड़ेगा।</p>
+        <div class="creamy-grid">
+          ${items.map(it => `<div><label>${esc(it.name)} — फ्राइड प्लेट</label><input type="number" class="fried-input" data-fid="${esc(it.id)}" min="0" step="1" value="${existing[it.id] && existing[it.id].fried ? existing[it.id].fried : ''}" placeholder="0"></div>`).join("")}
+          <div><label for="friedRate">फ्राइड एक्स्ट्रा ₹/प्लेट</label><input type="number" id="friedRate" min="0" step="0.01" value="${friedRateVal}"></div>
+        </div>
+        <p class="whatsapp-hint" id="friedLine" style="font-weight:700;"></p>
+      </div>
+      <div class="creamy-box">
         <div class="sub-title" style="margin-top:4px;">🥣 क्रीमी मोमोज़</div>
         <p class="hint" style="margin-bottom:8px;">क्रीमी की 1 प्लेट में 1 प्लेट पनीर मोमोज़ लगती है। आज कितनी क्रीमी प्लेट बिकी, वो यहाँ भरो — पनीर की उतनी प्लेटें सादी बिक्री से घट जाएँगी और क्रीमी की कमाई उसके अपने ₹/प्लेट से जुड़ेगी।</p>
         <div class="creamy-grid">
@@ -845,9 +862,11 @@
     const cBase = () => document.getElementById("creamyBase").value;
     const cPlates = () => parseFloat(document.getElementById("creamyPlates").value) || 0;
     const cRate = () => parseFloat(document.getElementById("creamyRate").value) || 0;
+    const friedOf = id => { const el = document.querySelector('.fried-input[data-fid="' + id + '"]'); return el ? (parseFloat(el.value) || 0) : 0; };
+    const fRate = () => parseFloat(document.getElementById("friedRate").value) || 0;
     const cCost = () => parseFloat(document.getElementById("creamyCost").value) || 0;
     function recalcStock() {
-      let madeTotal = 0, availableTotal = 0, leftoverTotal = 0, soldTotal = 0, earnTotal = 0, wasteTotal = 0, lossTotal = 0;
+      let madeTotal = 0, availableTotal = 0, leftoverTotal = 0, soldTotal = 0, earnTotal = 0, wasteTotal = 0, lossTotal = 0, friedTotal = 0;
       body.querySelectorAll("tr[data-id]").forEach(tr => {
         const prev = parseFloat(tr.getAttribute("data-prev")) || 0;
         const made = parseFloat(tr.querySelector(".made-input").value) || 0;
@@ -858,7 +877,9 @@
         const available = prev + made;
         const sold = available - leftover - waste;
         const plates = String(tr.getAttribute("data-id")) === String(cBase()) ? cPlates() : 0;
-        const earn = plateEarn(sold, pcs, rate, plates);
+        const friedP = friedOf(tr.getAttribute("data-id"));
+        const earn = plateEarn(sold, pcs, rate, plates) + friedP * fRate();
+        friedTotal += friedP;
         tr.querySelector(".available-cell").textContent = available;
         tr.querySelector(".sold-cell").textContent = sold;
         tr.querySelector(".earn-cell").textContent = money(earn);
@@ -879,6 +900,7 @@
       set("stockLeftoverTotal", leftoverTotal);
       set("stockSoldTotal", soldTotal);
       set("stockWasteTotal", wasteTotal);
+      set("friedLine", friedTotal ? "🍳 फ्राइड: " + friedTotal + " प्लेट × " + money(fRate()) + " = " + money(friedTotal * fRate()) + " एक्स्ट्रा कमाई" : "");
       set("stockLossLine", wasteTotal ? "खराब / खाए हुए माल का अनुमानित नुकसान: " + money(lossTotal) : "");
       const cEarn = cPlates() * cRate();
       const cCostTotal = cPlates() * cCost();
@@ -890,6 +912,7 @@
     body.querySelectorAll("tr[data-id]").forEach(tr => {
       tr.querySelectorAll("input").forEach(inp => inp.addEventListener("input", recalcStock));
     });
+    document.querySelectorAll(".fried-input, #friedRate").forEach(el => el.addEventListener("input", recalcStock));
     ["creamyPlates", "creamyRate", "creamyCost", "creamyBase"].forEach(id => {
       const el = document.getElementById(id);
       el.addEventListener("input", recalcStock);
@@ -907,6 +930,8 @@
           made: parseFloat(tr.querySelector(".made-input").value) || 0,
           leftover: parseFloat(tr.querySelector(".leftover-input").value) || 0,
           waste: parseFloat(tr.querySelector(".waste-input").value) || 0,
+          fried: friedOf(tr.getAttribute("data-id")),
+          friedRate: fRate(),
           rate: parseFloat(tr.querySelector(".rate-input").value) || 0,
           pcsPerPlate: parseFloat(tr.querySelector(".pcs-input").value) || 0
         });
@@ -951,7 +976,9 @@
           const waste = e ? Number(e.waste) || 0 : 0;
           const sold = available - leftover - waste;
           const plS = (cmS && String(cmS.baseItemId) === String(it.id)) ? cmS.plates : 0;
-          const earn = plateEarn(sold, pcs, rate, plS);
+          const frS = e ? Number(e.fried) || 0 : 0;
+          const frRS = e ? Number(e.friedRate) || 0 : 0;
+          const earn = plateEarn(sold, pcs, rate, plS) + frS * frRS;
 
           if (made || leftover || prev) hasData = true;
 
@@ -969,6 +996,7 @@
           lines.push("   • आज बचा: " + leftover + " " + it.unit);
           if (waste) lines.push("   • खराब / खाया: " + waste + " " + it.unit);
           if (rate) lines.push("   • ₹/प्लेट: ₹" + Math.round(rate * 100) / 100 + (pcs ? " (" + pcs + " पीस/प्लेट)" : ""));
+          if (frS) lines.push("   • 🍳 फ्राइड: " + frS + " प्लेट × " + money(frRS) + " एक्स्ट्रा");
           lines.push("   • 💰 कमाई: " + money(earn));
           lines.push("");
         });
@@ -1158,7 +1186,7 @@
     const st = r.stock || { items: [], totals: { made: 0, sold: 0, earn: 0 } };
     const stockRows = (st.items || []).map((it, ix) => {
       const dl = it.days || [];
-      const lines = dl.map(x => `<div class="detail-line"><span>📅 ${esc(fmtDate(x.date))}</span><span>बने ${qtyStr(x.made)} · बिके ${qtyStr(x.sold)}${x.waste ? ' · खराब ' + qtyStr(x.waste) : ''} · <b>${money(x.earn)}</b></span></div>`).join("");
+      const lines = dl.map(x => `<div class="detail-line"><span>📅 ${esc(fmtDate(x.date))}</span><span>बने ${qtyStr(x.made)} · बिके ${qtyStr(x.sold)}${x.waste ? ' · खराब ' + qtyStr(x.waste) : ''}${x.fried ? ' · फ्राइड ' + qtyStr(x.fried) : ''} · <b>${money(x.earn)}</b></span></div>`).join("");
       const id = "det-stock-" + ix;
       return `<tr>
         <td class="name-cell">${esc(it.name)}
@@ -1196,6 +1224,7 @@
           <tbody>${stockRows || '<tr><td colspan="4" class="muted">इस रेंज में कोई स्टॉक एंट्री नहीं।</td></tr>'}</tbody>
           <tfoot><tr class="total-row"><td>कुल</td><td class="num">${qtyStr(st.totals.made)}</td><td class="num">${qtyStr(st.totals.sold)}</td><td class="num">${money(st.totals.earn)}</td></tr></tfoot>
         </table></div>
+        ${st.totals.fried ? '<p class="whatsapp-hint" style="font-weight:700;">🍳 फ्राइड: ' + qtyStr(st.totals.fried) + ' प्लेट · एक्स्ट्रा कमाई ' + money(st.totals.friedEarn) + '</p>' : ''}
         ${st.totals.waste ? '<p class="whatsapp-hint" style="font-weight:700;">🗑 खराब / खाया कुल: ' + qtyStr(st.totals.waste) + '</p>' : ''}
         ${(st.creamy && st.creamy.plates > 0) ? '<p class="whatsapp-hint" style="font-weight:700;">🥣 क्रीमी: ' + qtyStr(st.creamy.plates) + ' प्लेट · कमाई ' + money(st.creamy.earn) + ' · अलग सामान लागत ' + money(st.creamy.cost) + ' · बचत ' + money(st.creamy.earn - st.creamy.cost) + '</p>' : ''}
       </div>
@@ -1304,6 +1333,7 @@
     });
     L.push("• *कुल बने " + qtyStr(st.totals.made) + " | बिके " + qtyStr(st.totals.sold) + " | 💰 कमाई " + money(st.totals.earn) + "*");
     if (st.totals.waste) L.push("• 🗑 खराब / खाया: " + qtyStr(st.totals.waste));
+    if (st.totals.fried) L.push("• 🍳 फ्राइड: " + qtyStr(st.totals.fried) + " प्लेट, एक्स्ट्रा कमाई " + money(st.totals.friedEarn));
     const sdays = st.days || [];
     if (sdays.length) {
       const mx = Math.max.apply(null, sdays.map(d => d.sold));
