@@ -206,7 +206,12 @@
   <div class="top-row">
     <div class="cash-card">
       <label for="mainDate">तारीख</label>
-      <input type="date" id="mainDate">
+      <input type="date" id="mainDate" style="margin-bottom:6px;">
+      <div class="chip-row" style="margin:0 0 4px;">
+        <button class="chip" id="entryYesterday">कल की एंट्री</button>
+        <button class="chip" id="entryToday">आज की एंट्री</button>
+      </div>
+      <div class="muted" id="mainDateHint" style="font-size:12px;margin:0 0 10px;"></div>
       <label for="cashInput">आज कितना कैश आया ₹</label>
       <input type="number" id="cashInput" min="0" step="1" placeholder="0" style="margin-bottom:10px;">
       <label for="onlineInput">आज कितना ऑनलाइन आया ₹</label>
@@ -214,6 +219,7 @@
       <div class="auto-box">
         <div class="auto-row"><span>कुल बिक्री (कैश + ऑनलाइन)</span><b id="totalSaleActual">₹0</b></div>
         <div class="auto-row"><span>स्टॉक के हिसाब से बिक्री</span><b id="salesToday">₹0</b></div>
+        <div class="auto-row" style="border-top:1px dashed var(--line);margin-top:4px;padding-top:6px;"><span><b style="color:var(--ink);">फ़र्क</b> (कैश+ऑनलाइन − स्टॉक)</span><b id="diffSale">₹0</b></div>
         <div class="auto-hint" id="onlineHint"></div>
       </div>
       <p class="cash-status" id="cashStatus"></p>
@@ -354,7 +360,30 @@
     { key: "packing", title: "Packing" }
   ];
 
-  document.getElementById("mainDate").value = todayStr();
+  // ---- एंट्री की तारीख़: आप रोज़ पिछले दिन का हिसाब भरते हो, इसलिए शुरू में "कल" ही चुनी रहेगी ----
+  function yesterdayStr() { const d = new Date(); d.setDate(d.getDate() - 1); return ymd(d); }
+  let entryMode = "yesterday";
+  try { entryMode = localStorage.getItem("entryMode") || "yesterday"; } catch (e) {}
+  function updateModeUI() {
+    const v = document.getElementById("mainDate").value;
+    const names = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const dt = new Date(v + "T12:00:00");
+    const wd = isNaN(dt) ? "" : names[dt.getDay()];
+    document.getElementById("entryYesterday").classList.toggle("on", v === yesterdayStr());
+    document.getElementById("entryToday").classList.toggle("on", v === todayStr());
+    const tag = v === yesterdayStr() ? "कल की एंट्री" : (v === todayStr() ? "आज की एंट्री" : "पुरानी तारीख़");
+    document.getElementById("mainDateHint").textContent = wd + " — " + tag;
+  }
+  function applyEntryMode(mode, remember) {
+    entryMode = mode;
+    if (remember) { try { localStorage.setItem("entryMode", mode); } catch (e) {} }
+    document.getElementById("mainDate").value = mode === "today" ? todayStr() : yesterdayStr();
+    updateModeUI();
+  }
+  applyEntryMode(entryMode, false);
+  function reloadForDate() { loadCash(); loadTodaySales(); renderAllSections(); renderStock(); }
+  document.getElementById("entryYesterday").addEventListener("click", () => { applyEntryMode("yesterday", true); reloadForDate(); });
+  document.getElementById("entryToday").addEventListener("click", () => { applyEntryMode("today", true); reloadForDate(); });
   function currentDate() { return document.getElementById("mainDate").value || todayStr(); }
 
   let sectionTotals = { daily: 0, momos: 0, packing: 0 };
@@ -407,6 +436,9 @@
     document.getElementById("salesToday").textContent = money(todaySales);
     const hint = document.getElementById("onlineHint");
     const diff = actual - todaySales;
+    const diffEl = document.getElementById("diffSale");
+    diffEl.textContent = (diff > 0 ? "+" : (diff < 0 ? "−" : "")) + money(Math.abs(diff));
+    diffEl.style.color = diff < 0 ? "var(--clay)" : "var(--green)";
     if (!todaySales) hint.textContent = "स्टॉक वाले टैब में आज का स्टॉक और रेट भरकर सेव करो, तब दोनों बिक्री का मिलान दिखेगा।";
     else if (Math.abs(diff) < 1) hint.textContent = "✓ कैश + ऑनलाइन, स्टॉक के हिसाब से बिल्कुल बराबर है।";
     else if (diff > 0) hint.textContent = "असली बिक्री स्टॉक से " + money(diff) + " ज़्यादा है।";
@@ -434,7 +466,7 @@
     } catch (err) { todaySales = 0; }
     updateOnline();
   }
-  document.getElementById("mainDate").addEventListener("change", () => { loadCash(); loadTodaySales(); renderAllSections(); renderStock(); });
+  document.getElementById("mainDate").addEventListener("change", () => { updateModeUI(); loadCash(); loadTodaySales(); renderAllSections(); renderStock(); });
 
   async function renderAllSections() {
     const container = document.getElementById("sections");
