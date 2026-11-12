@@ -972,7 +972,23 @@
         await call("saveStockEntries", { payload: { date, entries } });
         await call("saveCreamy", { payload: { date, plates: cPlates(), rate: cRate(), cost: cCost(), baseItemId: cBase() } });
         loadTodaySales();
-        statusEl.textContent = "✓ सेव हो गया";
+        // सेव के बाद शीट से सीधे दोबारा पढ़कर जाँचो कि फ्राइड सच में सेव हुआ या नहीं
+        let verifyMsg = "";
+        try {
+          const sentFried = entries.reduce((s, x) => s + (Number(x.fried) || 0), 0);
+          const chk = await jsonp({ action: "getStockEntries", date });
+          const got = (chk && chk.entries) || [];
+          if (got.length && got.some(r => r.fried === undefined)) {
+            verifyMsg = "⚠ फ्राइड सेव नहीं हुआ — Apps Script का Code.gs पुराना है। नया Code.gs डालकर New version Deploy करो।";
+          } else {
+            const gotFried = got.reduce((s, r) => s + (Number(r.fried) || 0), 0);
+            if (Math.abs(gotFried - sentFried) > 0.001) {
+              verifyMsg = "⚠ फ्राइड मेल नहीं खाया — भेजा " + sentFried + " प्लेट, शीट में " + gotFried + " मिला। दोबारा सेव करके देखो।";
+            }
+          }
+        } catch (e2) { /* जाँच न हो पाए तो सेव का नतीजा वैसा ही दिखाओ */ }
+        statusEl.textContent = verifyMsg || "✓ सेव हो गया";
+        if (verifyMsg) statusEl.classList.add("err");
       } catch (e) { statusEl.textContent = "⚠ " + e.message; statusEl.classList.add("err"); }
     });
 
