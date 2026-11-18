@@ -185,6 +185,11 @@
     .cash-card input[type="number"] { font-size:20px; }
     .leftover-value { font-size:25px; }
   }
+
+  /* ऑनलाइन मँगाया सामान — टिक */
+  .onl-cell { text-align:center; }
+  .onl-cell input { width:24px; height:24px; min-height:0; accent-color:var(--clay); cursor:pointer; }
+  .onl-tag { font-size:11px; font-weight:700; color:var(--clay); }
 </style>
 </head>
 <body>
@@ -386,18 +391,23 @@
   document.getElementById("entryToday").addEventListener("click", () => { applyEntryMode("today", true); reloadForDate(); });
   function currentDate() { return document.getElementById("mainDate").value || todayStr(); }
 
+  // sectionTotals = सिर्फ़ कैश से लिया सामान; sectionOnline = ऑनलाइन मँगाया सामान (कैश से नहीं कटेगा)
   let sectionTotals = { daily: 0, momos: 0, packing: 0 };
+  let sectionOnline = { daily: 0, momos: 0, packing: 0 };
 
   function updateLeftover() {
     const cash = parseFloat(document.getElementById("cashInput").value) || 0;
-    const totalExpense = sectionTotals.daily + sectionTotals.momos + sectionTotals.packing;
-    const leftover = cash - totalExpense;
+    const cashExp = sectionTotals.daily + sectionTotals.momos + sectionTotals.packing;
+    const onlExp = sectionOnline.daily + sectionOnline.momos + sectionOnline.packing;
+    const leftover = cash - cashExp;
     const card = document.getElementById("leftoverCard");
     const val = document.getElementById("leftoverValue");
     const sub = document.getElementById("leftoverSub");
     val.textContent = money(Math.abs(leftover));
     card.classList.toggle("neg", leftover < 0);
-    sub.textContent = leftover < 0 ? "कमी है" : "कुल खर्च: " + money(totalExpense);
+    sub.textContent = leftover < 0
+      ? "कमी है"
+      : "कैश खर्च: " + money(cashExp) + (onlExp ? " | ऑनलाइन खर्च: " + money(onlExp) : "");
   }
 
   async function loadCash() {
@@ -500,17 +510,18 @@
         <td class="num"><input type="number" class="qty-input" min="0" step="0.01" value="${ex?ex.quantity:''}" placeholder="0"></td>
         <td class="num"><input type="number" class="rate-input" min="0" step="0.01" value="${(ex && ex.rate) ? ex.rate : (it.rate || '')}" placeholder="0"></td>
         <td class="num row-total">₹0</td>
+        <td class="onl-cell"><input type="checkbox" class="onl-input" ${ex && ex.online ? 'checked' : ''}></td>
       </tr>`;
     }).join("");
 
     cardEl.innerHTML = `
       <h2>${esc(title)}</h2>
-      <p class="hint">मात्रा और कीमत डालो, कुल अपने आप बन जाएगा।</p>
+      <p class="hint">मात्रा और कीमत डालो, कुल अपने आप बन जाएगा। सामान ऑनलाइन मँगाया हो तो "ऑनलाइन" पर टिक लगाओ — वो खर्च कैश से नहीं कटेगा।</p>
       <div class="table-scroll">
         <table>
-          <thead><tr><th>सामान</th><th class="num">मात्रा</th><th class="num">₹/यूनिट</th><th class="num">कुल ₹</th></tr></thead>
-          <tbody id="body-${section}">${rows || '<tr><td colspan="4" class="muted">कोई सक्रिय आइटम नहीं है।</td></tr>'}</tbody>
-          <tfoot><tr class="total-row"><td colspan="3">कुल</td><td class="num" id="total-${section}">₹0</td></tr></tfoot>
+          <thead><tr><th>सामान</th><th class="num">मात्रा</th><th class="num">₹/यूनिट</th><th class="num">कुल ₹</th><th class="num">ऑनलाइन</th></tr></thead>
+          <tbody id="body-${section}">${rows || '<tr><td colspan="5" class="muted">कोई सक्रिय आइटम नहीं है।</td></tr>'}</tbody>
+          <tfoot><tr class="total-row"><td colspan="3">कुल</td><td class="num" id="total-${section}">₹0</td><td></td></tr></tfoot>
         </table>
       </div>
       <button class="primary" id="save-${section}">सेव करें</button>
@@ -528,18 +539,21 @@
 
     const body = document.getElementById("body-" + section);
     function recalc() {
-      let total = 0;
+      let cashTotal = 0, onlTotal = 0;
       body.querySelectorAll("tr[data-id]").forEach(tr => {
         const qty = parseFloat(tr.querySelector(".qty-input").value) || 0;
         const rate = parseFloat(tr.querySelector(".rate-input").value) || 0;
-        tr.querySelector(".row-total").textContent = money(qty * rate);
-        total += qty * rate;
+        const isOnl = tr.querySelector(".onl-input").checked;
+        tr.querySelector(".row-total").innerHTML = money(qty * rate) + (isOnl ? '<div class="onl-tag">ऑनलाइन</div>' : '');
+        if (isOnl) onlTotal += qty * rate; else cashTotal += qty * rate;
       });
-      document.getElementById("total-" + section).textContent = money(total);
-      sectionTotals[section] = total;
+      document.getElementById("total-" + section).textContent = money(cashTotal + onlTotal);
+      sectionTotals[section] = cashTotal;
+      sectionOnline[section] = onlTotal;
       updateLeftover();
     }
     body.querySelectorAll("input").forEach(inp => inp.addEventListener("input", recalc));
+    body.querySelectorAll(".onl-input").forEach(c => c.addEventListener("change", recalc));
     recalc();
 
     document.getElementById("save-" + section).addEventListener("click", async () => {
@@ -552,7 +566,8 @@
           itemName: tr.querySelector(".name-cell").childNodes[0].textContent.trim(),
           quantity: parseFloat(tr.querySelector(".qty-input").value) || 0,
           unit: tr.getAttribute("data-unit"),
-          rate: parseFloat(tr.querySelector(".rate-input").value) || 0
+          rate: parseFloat(tr.querySelector(".rate-input").value) || 0,
+          online: tr.querySelector(".onl-input").checked
         });
       });
       try {
@@ -643,22 +658,23 @@
       const money = v => "₹" + Math.round(Number(v) || 0).toLocaleString("en-IN");
       const sectionText = (title, res) => {
         const arr = res.entries || [];
-        let total = 0;
+        let total = 0, onlTotal = 0;
         const out = ["📦 *" + title + "*"];
         if (!arr.length) {
           out.push("• कोई एंट्री नहीं");
-          return { text: out.join("\n"), total: 0 };
+          return { text: out.join("\n"), total: 0, onl: 0 };
         }
         arr.forEach(e => {
           const qty = Number(e.quantity) || 0;
           const rate = Number(e.rate) || 0;
           const lineTotal = Number(e.total) || qty * rate;
           total += lineTotal;
+          if (e.online) onlTotal += lineTotal;
           out.push("• " + e.itemName + ": " + qty + " " + (e.unit || "") +
-                   " × " + money(rate) + " = " + money(lineTotal));
+                   " × " + money(rate) + " = " + money(lineTotal) + (e.online ? " 🌐ऑनलाइन" : ""));
         });
-        out.push("• *कुल: " + money(total) + "*");
-        return { text: out.join("\n"), total };
+        out.push("• *कुल: " + money(total) + "*" + (onlTotal ? " (इसमें ऑनलाइन " + money(onlTotal) + ")" : ""));
+        return { text: out.join("\n"), total, onl: onlTotal };
       };
 
       const daily = sectionText("Daily का सामान", dailyRes);
@@ -667,7 +683,9 @@
 
       const cash = Number(cashRes.cash) || 0;
       const expense = daily.total + momos.total + packing.total;
-      const cashLeft = cash - expense;
+      const onlExpense = daily.onl + momos.onl + packing.onl;
+      const cashExpense = expense - onlExpense;
+      const cashLeft = cash - cashExpense;
 
       const prevMap = {};
       (stockPrevRes && stockPrevRes.entries || []).forEach(e => prevMap[e.itemId] = Number(e.leftover) || 0);
@@ -735,8 +753,8 @@
         "• आज ऑनलाइन आया: " + money(online),
         "• कुल बिक्री (कैश + ऑनलाइन): " + money(cash + online),
         "• स्टॉक के हिसाब से बिक्री: " + money(earned),
-        "• कुल सामान खर्च: " + money(expense),
-        "• बचा पैसा (कैश − खर्च): " + money(cashLeft),
+        "• कुल सामान खर्च: " + money(expense) + (onlExpense ? " (कैश " + money(cashExpense) + " + ऑनलाइन " + money(onlExpense) + ")" : ""),
+        "• बचा पैसा (कैश − कैश खर्च): " + money(cashLeft),
         "",
         stockLines.join("\n"),
         "",
@@ -1203,7 +1221,7 @@
         <td class="name-cell">${esc(fmtDate(d.date))}${festOf(d.date) ? '<div class="day-fest">🎉 ' + esc(festOf(d.date)) + '</div>' : ''}</td>
         <td class="num">${money(d.cash)}</td>
         <td class="num">${money(d.online || 0)}</td>
-        <td class="num">${money(d.expense)}</td>
+        <td class="num">${money(d.expense)}${d.onlineExp ? '<div class="onl-tag">ऑनलाइन ' + money(d.onlineExp) + '</div>' : ''}</td>
         <td class="num ${d.leftover < 0 ? 'neg-text' : 'pos-text'}">${d.leftover < 0 ? '−' : ''}${money(Math.abs(d.leftover))}</td>
       </tr>`).join("");
 
@@ -1211,7 +1229,7 @@
       const arr = (r.items && r.items[s.key]) || [];
       const rows = arr.map((it, ix) => {
         const dl = it.days || [];
-        const lines = dl.map(x => `<div class="detail-line"><span>📅 ${esc(fmtDate(x.date))}</span><span>${qtyStr(x.qty)} ${esc(it.unit || "")} × ${money(x.rate)} = <b>${money(x.amount)}</b></span></div>`).join("");
+        const lines = dl.map(x => `<div class="detail-line"><span>📅 ${esc(fmtDate(x.date))}</span><span>${qtyStr(x.qty)} ${esc(it.unit || "")} × ${money(x.rate)} = <b>${money(x.amount)}</b>${x.online ? ' <span class="onl-tag">ऑनलाइन</span>' : ''}</span></div>`).join("");
         const id = "det-" + s.key + "-" + ix;
         return `<tr>
           <td class="name-cell">${esc(it.name)}
@@ -1254,8 +1272,9 @@
           <div class="stock-stat"><div class="label">कुल कैश आया</div><div class="value">${money(t.cash)}</div></div>
           <div class="stock-stat"><div class="label">कुल ऑनलाइन आया</div><div class="value">${money(t.online || 0)}</div></div>
           <div class="stock-stat"><div class="label">कुल सामान खर्च</div><div class="value">${money(t.expense)}</div></div>
+          <div class="stock-stat"><div class="label">इसमें ऑनलाइन मँगाया सामान</div><div class="value">${money(t.onlineExp || 0)}</div></div>
           <div class="stock-stat"><div class="label">कुल आमदनी (कैश + ऑनलाइन)</div><div class="value">${money((t.cash || 0) + (t.online || 0))}</div></div>
-          <div class="stock-stat earn ${negTotal ? 'neg' : ''}"><div class="label">💰 कुल बचा पैसा (कैश − खर्च, रोज़ का जोड़कर)</div><div class="value">${negTotal ? '−' : ''}${money(Math.abs(t.leftover))}</div></div>
+          <div class="stock-stat earn ${negTotal ? 'neg' : ''}"><div class="label">💰 कुल बचा पैसा (कैश − कैश वाला खर्च, रोज़ का जोड़कर)</div><div class="value">${negTotal ? '−' : ''}${money(Math.abs(t.leftover))}</div></div>
         </div>
         <div class="sub-title">📅 रोज़ का बचा पैसा</div>
         <div class="table-scroll"><table class="rtable">
@@ -1353,12 +1372,13 @@
     L.push("• कुल ऑनलाइन आया: " + money(t.online || 0));
     L.push("• *कुल आमदनी (कैश + ऑनलाइन): " + money((t.cash || 0) + (t.online || 0)) + "*");
     L.push("• कुल सामान खर्च: " + money(t.expense));
+    if (t.onlineExp) L.push("• इसमें ऑनलाइन मँगाया सामान: " + money(t.onlineExp));
     L.push("• *कुल बचा पैसा: " + sgn(t.leftover) + "*");
     L.push("");
     L.push("📅 *रोज़ का बचा पैसा*");
     if (!(r.days || []).length) L.push("• कोई एंट्री नहीं");
     (r.days || []).forEach(d => {
-      L.push("• " + fmtDate(d.date) + ": कैश " + money(d.cash) + " − खर्च " + money(d.expense) + " = *" + sgn(d.leftover) + "*" + (d.online ? " | ऑनलाइन " + money(d.online) : "") + (festOf(d.date) ? " 🎉 " + festOf(d.date) : ""));
+      L.push("• " + fmtDate(d.date) + ": कैश " + money(d.cash) + " − खर्च " + money(d.cashExp != null ? d.cashExp : d.expense) + " = *" + sgn(d.leftover) + "*" + (d.online ? " | ऑनलाइन " + money(d.online) : "") + (d.onlineExp ? " | ऑनलाइन सामान " + money(d.onlineExp) : "") + (festOf(d.date) ? " 🎉 " + festOf(d.date) : ""));
     });
 
     SECTIONS.forEach(s => {
