@@ -84,6 +84,12 @@
   .tag.cash { background:var(--card); color:var(--cash); border:1px solid var(--cash); }
   .tag.onl { background:var(--card); color:var(--online); border:1px solid var(--online); }
   .sec-name { color:var(--soft); font-size:11px; }
+  .bal { grid-column:1 / -1; display:flex; justify-content:space-between; align-items:center; gap:8px;
+    margin-top:2px; padding-top:7px; border-top:1px dashed var(--line); font-size:12.5px; font-weight:600; color:var(--soft); }
+  .bal b { font-size:15px; font-weight:800; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .bal.pos b { color:var(--cash); }
+  .bal.neg b { color:var(--exp); }
+  .row.total .bal { border-top-color:var(--soft); color:var(--ink); font-weight:700; }
   .empty { padding:22px 14px; text-align:center; color:var(--soft); font-size:14px; }
   .foot { margin:12px 2px 0; font-size:12px; color:var(--soft); }
   @media (max-width:380px) { .row .n { font-size:13px; } .row { padding:9px 8px; gap:4px; } }
@@ -115,7 +121,7 @@
 
   <p class="status" id="status"></p>
   <div id="out"></div>
-  <p class="foot">कैश = उस दिन हाथ में आया पैसा · ऑनलाइन = UPI/ऑनलाइन आया पैसा · खर्च = सामान पर कुल खर्च, जिसके नीचे दिखता है कि कितना कैश से और कितना ऑनलाइन हुआ। किसी तारीख़ पर दबाओ तो हर सामान और उसका कैश/ऑनलाइन दिखेगा।</p>
+  <p class="foot">कैश = उस दिन हाथ में आया पैसा · ऑनलाइन = UPI/ऑनलाइन आया पैसा · खर्च = सामान पर कुल खर्च, जिसके नीचे दिखता है कि कितना कैश से और कितना ऑनलाइन हुआ। बचा पैसा = कैश − कैश से लाया सामान। किसी तारीख़ पर दबाओ तो हर सामान और उसका कैश/ऑनलाइन दिखेगा।</p>
 </div>
 
 <script>
@@ -188,6 +194,11 @@
       });
     });
     const qty = v => String(Math.round((Number(v) || 0) * 100) / 100);
+    // बचा पैसा = कैश − कैश से लाया सामान (ऑनलाइन मँगाया सामान कैश से नहीं कटता)
+    const balHtml = (v, label) => {
+      const n = Number(v) || 0;
+      return '<div class="bal ' + (n < 0 ? 'neg' : 'pos') + '"><span>' + label + '</span><b>' + (n < 0 ? '−' : '') + money(Math.abs(n)) + '</b></div>';
+    };
     const split = (exp, onl) => {
       const o = Number(onl) || 0;
       return '<small class="s-cash">कैश से ' + money((Number(exp) || 0) - o) + '</small>' +
@@ -206,6 +217,7 @@
         <div class="n c-cash">${money(d.cash)}</div>
         <div class="n c-online">${money(d.online)}</div>
         <div class="n c-exp">${money(d.expense)}${split(d.expense, d.onlineExp)}</div>
+        ${balHtml(d.leftover != null ? d.leftover : (d.cash - (d.expense - (d.onlineExp || 0))), 'बचा पैसा (कैश − कैश से लाया सामान)')}
         ${list.length ? '<div class="det">' + lines + '</div>' : ''}
       </div>`;
     }).join("");
@@ -217,6 +229,7 @@
         <div class="n c-cash">${money(t.cash)}</div>
         <div class="n c-online">${money(t.online)}</div>
         <div class="n c-exp">${money(t.expense)}${split(t.expense, t.onlineExp)}</div>
+        ${balHtml(t.leftover != null ? t.leftover : (t.cash - (t.expense - (t.onlineExp || 0))), 'कुल बचा पैसा')}
       </div>
       ${rows}
     </div>`;
