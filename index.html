@@ -191,6 +191,27 @@
   .onl-cell input { width:24px; height:24px; min-height:0; accent-color:var(--clay); cursor:pointer; }
   .onl-tag { font-size:11px; font-weight:700; color:var(--clay); }
   table.items-table { min-width:780px; }
+
+  /* जेब से पैसा */
+  .pm-nav { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; }
+  .pm-nav .mname { font-weight:800; font-size:16px; text-align:center; flex:1; }
+  .pm-sum { background:var(--green-soft); border-radius:10px; padding:10px; text-align:center; margin-bottom:10px; }
+  .pm-sum .big { font-size:24px; font-weight:800; color:var(--green); font-variant-numeric:tabular-nums; }
+  .pm-sum .small { font-size:12px; color:var(--ink-soft); }
+  .p-card { border:1px solid var(--line); border-radius:10px; padding:12px; margin-bottom:10px; background:var(--card); }
+  .p-name { font-weight:800; font-size:16px; margin-bottom:6px; }
+  .p-line { display:flex; justify-content:space-between; gap:8px; padding:5px 0; font-size:14px; border-bottom:1px dashed var(--line); }
+  .p-line:last-child { border-bottom:none; }
+  .p-line b { font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .p-line.total { border-top:2px solid var(--ink); border-bottom:none; margin-top:4px; padding-top:8px; font-weight:800; }
+  .p-line.total b { color:var(--green); }
+  .p-line.total.neg b { color:var(--clay); }
+  .pm-entry { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--line); font-size:13.5px; }
+  .pm-entry:last-child { border-bottom:none; }
+  .pm-entry .amt { font-weight:800; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .pm-entry .amt.put { color:var(--green); }
+  .pm-entry .amt.out { color:var(--clay); }
+  .pm-entry small { display:block; color:var(--ink-soft); font-size:11.5px; }
 </style>
 </head>
 <body>
@@ -206,6 +227,7 @@
     <button class="tab-btn active" data-tab="hisabTab">📋 सामान हिसाब</button>
     <button class="tab-btn" data-tab="stockTab">📦 बना / बिका / बचा</button>
     <button class="tab-btn" data-tab="totalTab">📊 कुल हिसाब</button>
+    <button class="tab-btn" data-tab="partnerTab">🤝 जेब से पैसा</button>
   </div>
 
   <div id="hisabTab" class="tab-panel active">
@@ -267,6 +289,25 @@
     </div>
     <div id="rangeResult"></div>
   </div>
+
+  <div id="partnerTab" class="tab-panel">
+    <div class="card">
+      <h2>🤝 अपनी जेब से लगाया पैसा</h2>
+      <p class="hint">जब Ashu, Avnish या कोई और अपनी जेब से पैसा लगाए तो यहाँ लिखो। जब तक वो वापस न निकालें, बाकी पैसा अगले महीनों में अपने-आप आगे जुड़ता रहेगा।</p>
+      <div class="creamy-grid">
+        <div><label for="pmDate">तारीख़</label><input type="date" id="pmDate"></div>
+        <div><label for="pmPerson">किसने</label><select id="pmPerson"></select></div>
+        <div><label for="pmType">क्या हुआ</label>
+          <select id="pmType"><option value="put">पैसा लगाया (अपनी जेब से)</option><option value="out">पैसा वापस लिया (निकाला)</option></select></div>
+        <div><label for="pmAmount">रकम ₹</label><input type="number" id="pmAmount" min="0" step="1" placeholder="0"></div>
+        <div><label for="pmNew">नया नाम (लिस्ट में न हो तो)</label><input type="text" id="pmNew" placeholder="नाम"></div>
+        <div><label for="pmNote">नोट (चाहो तो)</label><input type="text" id="pmNote" placeholder="जैसे: पनीर, गैस"></div>
+      </div>
+      <button class="primary" id="pmSave">सेव करें</button>
+      <p class="save-status" id="pmStatus"></p>
+    </div>
+    <div id="pmView"></div>
+  </div>
 </div>
 
 <script>
@@ -284,6 +325,7 @@
         rangeAutoLoaded = true;
         loadRange();
       }
+      if (btn.dataset.tab === "partnerTab") loadPartner();
     });
   });
 
@@ -1428,6 +1470,140 @@
 
     window.open("https://wa.me/?text=" + encodeURIComponent(L.join("\n")), "_blank");
   }
+
+  // ===================================================================
+  // 🤝 जेब से पैसा — Ashu, Avnish आदि ने अपनी जेब से कितना लगाया / कितना वापस निकाला
+  // बाकी = लगाया − निकाला, और ये हर महीने आगे जुड़ता (carry) रहता है
+  // ===================================================================
+  const PEOPLE = ["Ashu", "Avnish"];
+  const MONTHS_HI = ["जनवरी","फ़रवरी","मार्च","अप्रैल","मई","जून","जुलाई","अगस्त","सितंबर","अक्टूबर","नवंबर","दिसंबर"];
+  let pmData = [];
+  let pmMonth = todayStr().slice(0, 7);
+  document.getElementById("pmDate").value = todayStr();
+
+  function monthShift(m, delta) {
+    const p = m.split("-");
+    const d = new Date(Number(p[0]), Number(p[1]) - 1 + delta, 1);
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+  }
+  function monthLabel(m) { const p = m.split("-"); return MONTHS_HI[Number(p[1]) - 1] + " " + p[0]; }
+  function pmPeople() {
+    const set = PEOPLE.slice();
+    pmData.forEach(e => { if (e.person && set.indexOf(e.person) === -1) set.push(e.person); });
+    return set;
+  }
+  function fillPeople() {
+    const sel = document.getElementById("pmPerson");
+    const cur = sel.value;
+    sel.innerHTML = pmPeople().map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
+    if (cur) sel.value = cur;
+  }
+  fillPeople();
+
+  async function loadPartner() {
+    const view = document.getElementById("pmView");
+    try {
+      const r = await jsonp({ action: "getPartnerMoney" });
+      if (!r || r.error || !r.entries) throw new Error(r && r.error ? r.error : "बैकएंड में नया Code.gs डालकर दोबारा Deploy करो");
+      pmData = r.entries;
+      fillPeople();
+      renderPartner();
+    } catch (e) {
+      view.innerHTML = `<div class="card"><p class="warn">⚠ ${esc(e.message)}</p><button class="secondary" id="pmRetry">फिर कोशिश करें</button></div>`;
+      document.getElementById("pmRetry").addEventListener("click", loadPartner);
+    }
+  }
+
+  function renderPartner() {
+    const first = pmMonth + "-01";
+    const next = monthShift(pmMonth, 1) + "-01";
+    const sgn = v => (v < 0 ? "−" : "") + money(Math.abs(v));
+    let totalClosing = 0;
+
+    const cards = pmPeople().map(n => {
+      let open = 0, put = 0, out = 0;
+      pmData.forEach(e => {
+        if (e.person !== n) return;
+        const amt = Number(e.amount) || 0;
+        if (e.date < first) open += (e.type === "out" ? -amt : amt);
+        else if (e.date < next) { if (e.type === "out") out += amt; else put += amt; }
+      });
+      const closing = open + put - out;
+      totalClosing += closing;
+      return `<div class="p-card">
+        <div class="p-name">${esc(n)}</div>
+        <div class="p-line"><span>पिछले महीनों से बाकी (आगे आया)</span><b>${sgn(open)}</b></div>
+        <div class="p-line"><span>इस महीने लगाया</span><b>+ ${money(put)}</b></div>
+        <div class="p-line"><span>इस महीने वापस लिया</span><b>− ${money(out)}</b></div>
+        <div class="p-line total ${closing < 0 ? 'neg' : ''}"><span>${closing < 0 ? 'ज़्यादा निकाल लिया' : 'अभी बाकी (आगे जुड़ेगा)'}</span><b>${sgn(closing)}</b></div>
+      </div>`;
+    }).join("");
+
+    const list = pmData.filter(e => e.date >= first && e.date < next).slice().sort((a, b) => a.date < b.date ? 1 : -1);
+    const entries = list.map(e => `<div class="pm-entry">
+        <div><b>${esc(e.person)}</b> — ${e.type === "out" ? "वापस लिया" : "लगाया"}
+          <small>${esc(fmtDate(e.date))}${e.note ? " · " + esc(e.note) : ""}</small></div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span class="amt ${e.type}">${e.type === "out" ? "− " : "+ "}${money(e.amount)}</span>
+          <button class="icon-btn danger" data-pmdel="${esc(e.id)}" title="हटाएं">🗑</button>
+        </div>
+      </div>`).join("");
+
+    document.getElementById("pmView").innerHTML = `
+      <div class="card">
+        <div class="pm-nav">
+          <button class="secondary" data-pm="prev">◀</button>
+          <div class="mname">${esc(monthLabel(pmMonth))}</div>
+          <button class="secondary" data-pm="next">▶</button>
+        </div>
+        <div class="pm-sum">
+          <div class="small">इस महीने के अंत तक कुल बाकी (सबका)</div>
+          <div class="big">${sgn(totalClosing)}</div>
+        </div>
+        ${cards}
+        <div class="sub-title">📋 इस महीने की एंट्री</div>
+        ${entries || '<p class="muted" style="margin:6px 0 0;">इस महीने कोई एंट्री नहीं।</p>'}
+      </div>`;
+  }
+
+  document.getElementById("pmView").addEventListener("click", async (ev) => {
+    const nav = ev.target.closest("[data-pm]");
+    if (nav) {
+      pmMonth = monthShift(pmMonth, nav.getAttribute("data-pm") === "next" ? 1 : -1);
+      renderPartner();
+      return;
+    }
+    const del = ev.target.closest("[data-pmdel]");
+    if (del) {
+      if (!confirm("ये एंट्री हटा दें?")) return;
+      try { await call("deletePartnerEntry", { payload: { id: del.getAttribute("data-pmdel") } }); }
+      catch (e) { alert("हट नहीं पाया: " + e.message); }
+      loadPartner();
+    }
+  });
+
+  document.getElementById("pmSave").addEventListener("click", async () => {
+    const st = document.getElementById("pmStatus");
+    const date = document.getElementById("pmDate").value;
+    const person = document.getElementById("pmNew").value.trim() || document.getElementById("pmPerson").value;
+    const type = document.getElementById("pmType").value;
+    const amount = parseFloat(document.getElementById("pmAmount").value) || 0;
+    const note = document.getElementById("pmNote").value.trim();
+    st.classList.remove("err");
+    if (!date) { st.textContent = "⚠ तारीख़ चुनो"; st.classList.add("err"); return; }
+    if (!person) { st.textContent = "⚠ नाम चुनो या लिखो"; st.classList.add("err"); return; }
+    if (amount <= 0) { st.textContent = "⚠ रकम डालो"; st.classList.add("err"); return; }
+    st.textContent = "सेव हो रहा है…";
+    try {
+      await call("addPartnerEntry", { payload: { date, person, type, amount, note } });
+      document.getElementById("pmAmount").value = "";
+      document.getElementById("pmNote").value = "";
+      document.getElementById("pmNew").value = "";
+      st.textContent = "✓ सेव हो गया";
+      pmMonth = date.slice(0, 7);
+      loadPartner();
+    } catch (e) { st.textContent = "⚠ " + e.message; st.classList.add("err"); }
+  });
 
   // PWA install: Android Chrome will show the Install button when the app
   // is served from HTTPS with the manifest + service worker files.
