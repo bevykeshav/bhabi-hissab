@@ -190,6 +190,7 @@
   .onl-cell { text-align:center; }
   .onl-cell input { width:24px; height:24px; min-height:0; accent-color:var(--clay); cursor:pointer; }
   .onl-tag { font-size:11px; font-weight:700; color:var(--clay); }
+  table.items-table { min-width:780px; }
 </style>
 </head>
 <body>
@@ -500,28 +501,30 @@
       return;
     }
     const items = (masterRes.items || []).filter(it => it.active);
-    const existing = {};
-    (entriesRes.entries || []).forEach(e => { existing[e.itemId] = e; });
+    // एक ही सामान एक दिन में कुछ कैश से और कुछ ऑनलाइन भी आ सकता है — इसलिए दोनों की अलग मात्रा/रेट
+    const existingC = {}, existingO = {};
+    (entriesRes.entries || []).forEach(e => { (e.online ? existingO : existingC)[e.itemId] = e; });
 
     let rows = items.map(it => {
-      const ex = existing[it.id];
+      const exC = existingC[it.id], exO = existingO[it.id];
       return `<tr data-id="${it.id}" data-unit="${esc(it.unit)}">
         <td class="name-cell">${esc(it.name)}<div class="muted" style="font-size:11px;">${esc(it.unit)}</div></td>
-        <td class="num"><input type="number" class="qty-input" min="0" step="0.01" value="${ex?ex.quantity:''}" placeholder="0"></td>
-        <td class="num"><input type="number" class="rate-input" min="0" step="0.01" value="${(ex && ex.rate) ? ex.rate : (it.rate || '')}" placeholder="0"></td>
+        <td class="num"><input type="number" class="qty-input" min="0" step="0.01" value="${exC?exC.quantity:''}" placeholder="0"></td>
+        <td class="num"><input type="number" class="rate-input" min="0" step="0.01" value="${(exC && exC.rate) ? exC.rate : (it.rate || '')}" placeholder="0"></td>
+        <td class="num"><input type="number" class="oqty-input" min="0" step="0.01" value="${exO?exO.quantity:''}" placeholder="0"></td>
+        <td class="num"><input type="number" class="orate-input" min="0" step="0.01" value="${(exO && exO.rate) ? exO.rate : (it.rate || '')}" placeholder="0"></td>
         <td class="num row-total">₹0</td>
-        <td class="onl-cell"><input type="checkbox" class="onl-input" ${ex && ex.online ? 'checked' : ''}></td>
       </tr>`;
     }).join("");
 
     cardEl.innerHTML = `
       <h2>${esc(title)}</h2>
-      <p class="hint">मात्रा और कीमत डालो, कुल अपने आप बन जाएगा। सामान ऑनलाइन मँगाया हो तो "ऑनलाइन" पर टिक लगाओ — वो खर्च कैश से नहीं कटेगा।</p>
+      <p class="hint">कैश से जितना लाए वो "कैश" में, और जितना ऑनलाइन मँगाया वो "ऑनलाइन" में भरो। एक ही सामान दोनों तरह आया हो तो दोनों में भर दो — ऑनलाइन वाला खर्च कैश से नहीं कटेगा।</p>
       <div class="table-scroll">
-        <table>
-          <thead><tr><th>सामान</th><th class="num">मात्रा</th><th class="num">₹/यूनिट</th><th class="num">कुल ₹</th><th class="num">ऑनलाइन</th></tr></thead>
-          <tbody id="body-${section}">${rows || '<tr><td colspan="5" class="muted">कोई सक्रिय आइटम नहीं है।</td></tr>'}</tbody>
-          <tfoot><tr class="total-row"><td colspan="3">कुल</td><td class="num" id="total-${section}">₹0</td><td></td></tr></tfoot>
+        <table class="items-table">
+          <thead><tr><th>सामान</th><th class="num">कैश मात्रा</th><th class="num">कैश ₹/यूनिट</th><th class="num">ऑनलाइन मात्रा</th><th class="num">ऑनलाइन ₹/यूनिट</th><th class="num">कुल ₹</th></tr></thead>
+          <tbody id="body-${section}">${rows || '<tr><td colspan="6" class="muted">कोई सक्रिय आइटम नहीं है।</td></tr>'}</tbody>
+          <tfoot><tr class="total-row"><td colspan="5">कुल</td><td class="num" id="total-${section}">₹0</td></tr></tfoot>
         </table>
       </div>
       <button class="primary" id="save-${section}">सेव करें</button>
@@ -541,11 +544,10 @@
     function recalc() {
       let cashTotal = 0, onlTotal = 0;
       body.querySelectorAll("tr[data-id]").forEach(tr => {
-        const qty = parseFloat(tr.querySelector(".qty-input").value) || 0;
-        const rate = parseFloat(tr.querySelector(".rate-input").value) || 0;
-        const isOnl = tr.querySelector(".onl-input").checked;
-        tr.querySelector(".row-total").innerHTML = money(qty * rate) + (isOnl ? '<div class="onl-tag">ऑनलाइन</div>' : '');
-        if (isOnl) onlTotal += qty * rate; else cashTotal += qty * rate;
+        const cAmt = (parseFloat(tr.querySelector(".qty-input").value) || 0) * (parseFloat(tr.querySelector(".rate-input").value) || 0);
+        const oAmt = (parseFloat(tr.querySelector(".oqty-input").value) || 0) * (parseFloat(tr.querySelector(".orate-input").value) || 0);
+        tr.querySelector(".row-total").innerHTML = money(cAmt + oAmt) + (oAmt ? '<div class="onl-tag">ऑनलाइन ' + money(oAmt) + '</div>' : '');
+        cashTotal += cAmt; onlTotal += oAmt;
       });
       document.getElementById("total-" + section).textContent = money(cashTotal + onlTotal);
       sectionTotals[section] = cashTotal;
@@ -553,7 +555,6 @@
       updateLeftover();
     }
     body.querySelectorAll("input").forEach(inp => inp.addEventListener("input", recalc));
-    body.querySelectorAll(".onl-input").forEach(c => c.addEventListener("change", recalc));
     recalc();
 
     document.getElementById("save-" + section).addEventListener("click", async () => {
@@ -561,14 +562,21 @@
       statusEl.textContent = "सेव हो रहा है…"; statusEl.classList.remove("err");
       const entries = [];
       body.querySelectorAll("tr[data-id]").forEach(tr => {
-        entries.push({
+        const base = {
           itemId: tr.getAttribute("data-id"),
           itemName: tr.querySelector(".name-cell").childNodes[0].textContent.trim(),
+          unit: tr.getAttribute("data-unit")
+        };
+        // कैश वाली लाइन (हमेशा, ताकि रेट याद रहे)
+        entries.push(Object.assign({}, base, {
           quantity: parseFloat(tr.querySelector(".qty-input").value) || 0,
-          unit: tr.getAttribute("data-unit"),
           rate: parseFloat(tr.querySelector(".rate-input").value) || 0,
-          online: tr.querySelector(".onl-input").checked
-        });
+          online: false
+        }));
+        // ऑनलाइन वाली अलग लाइन (सिर्फ़ तब जब भरी हो)
+        const oq = parseFloat(tr.querySelector(".oqty-input").value) || 0;
+        const orr = parseFloat(tr.querySelector(".orate-input").value) || 0;
+        if (oq > 0 || orr > 0) entries.push(Object.assign({}, base, { quantity: oq, rate: orr, online: true }));
       });
       try {
         await call("saveEntries", { section, payload: { date, entries } });
