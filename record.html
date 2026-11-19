@@ -90,6 +90,27 @@
   .bal .ln.res b { font-size:15px; }
   .bal.pos .ln.res b { color:var(--cash); }
   .bal.neg .ln.res b { color:var(--exp); }
+  .pm-title { margin:22px 2px 8px; font-size:17px; font-weight:800; }
+  .pm-nav { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; }
+  .pm-nav .mname { font-weight:800; font-size:16px; flex:1; text-align:center; }
+  .pm-sum { background:var(--tint); border-radius:10px; padding:10px; text-align:center; margin-bottom:10px; }
+  .pm-sum .big { font-size:24px; font-weight:800; color:var(--cash); font-variant-numeric:tabular-nums; }
+  .pm-sum .small { font-size:12px; color:var(--soft); }
+  .p-card { border:1px solid var(--line); border-radius:10px; padding:12px; margin-bottom:10px; }
+  .p-name { font-weight:800; font-size:16px; margin-bottom:6px; }
+  .p-line { display:flex; justify-content:space-between; gap:8px; padding:5px 0; font-size:14px; border-bottom:1px dashed var(--line); }
+  .p-line:last-child { border-bottom:none; }
+  .p-line b { font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .p-line.total { border-top:2px solid var(--ink); border-bottom:none; margin-top:4px; padding-top:8px; font-weight:800; }
+  .p-line.total b { color:var(--cash); }
+  .p-line.total.neg b { color:var(--exp); }
+  .pm-entry { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--line); font-size:13.5px; }
+  .pm-entry:last-child { border-bottom:none; }
+  .pm-entry small { display:block; color:var(--soft); font-size:11.5px; }
+  .pm-entry .amt { font-weight:800; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .pm-entry .amt.put { color:var(--cash); }
+  .pm-entry .amt.out { color:var(--exp); }
+  .pm-sub { margin:10px 0 2px; font-weight:800; font-size:14px; }
   .row.total .bal { border-top-color:var(--soft); color:var(--ink); font-weight:700; }
   .empty { padding:22px 14px; text-align:center; color:var(--soft); font-size:14px; }
   .foot { margin:12px 2px 0; font-size:12px; color:var(--soft); }
@@ -122,6 +143,9 @@
 
   <p class="status" id="status"></p>
   <div id="out"></div>
+
+  <h2 class="pm-title">🤝 अपनी जेब से लगाया पैसा</h2>
+  <div class="panel" id="pm"><div class="empty">⏳ आ रहा है…</div></div>
   <p class="foot">कैश = उस दिन हाथ में आया पैसा · ऑनलाइन = UPI/ऑनलाइन आया पैसा · खर्च = सामान पर कुल खर्च, जिसके नीचे दिखता है कि कितना कैश से और कितना ऑनलाइन हुआ। कुल आया = कैश + ऑनलाइन। सामान लाने के बाद बचा = कुल आया − सामान का कुल खर्च (कैश और ऑनलाइन दोनों से लाया)। किसी तारीख़ पर दबाओ तो हर सामान और उसका कैश/ऑनलाइन दिखेगा।</p>
 </div>
 
@@ -279,8 +303,99 @@
     const r = e.target.closest(".row.day"); if (r) { e.preventDefault(); toggleRow(r); }
   });
 
+  // ===== 🤝 अपनी जेब से लगाया पैसा (सिर्फ़ देखने के लिए) =====
+  const MONTHS_HI = ["जनवरी","फ़रवरी","मार्च","अप्रैल","मई","जून","जुलाई","अगस्त","सितंबर","अक्टूबर","नवंबर","दिसंबर"];
+  let pmData = null;
+  let pmMonth = ymd(new Date()).slice(0, 7);
+
+  function monthShift(m, delta) {
+    const p = m.split("-");
+    const d = new Date(Number(p[0]), Number(p[1]) - 1 + delta, 1);
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+  }
+  function monthLabel(m) { const p = m.split("-"); return MONTHS_HI[Number(p[1]) - 1] + " " + p[0]; }
+
+  function readAct(params) {
+    return new Promise((resolve, reject) => {
+      const cb = "pcb_" + Date.now();
+      const timer = setTimeout(() => { clean(); reject(new Error("जवाब नहीं आया, दोबारा कोशिश करो")); }, 20000);
+      const sc = document.createElement("script");
+      function clean() { clearTimeout(timer); delete window[cb]; if (sc.parentNode) sc.parentNode.removeChild(sc); }
+      window[cb] = x => { clean(); resolve(x); };
+      sc.onerror = () => { clean(); reject(new Error("इंटरनेट या सर्वर की दिक्कत")); };
+      sc.src = SCRIPT_URL + "?" + new URLSearchParams(Object.assign({}, params, { callback: cb, _t: Date.now() }));
+      document.body.appendChild(sc);
+    });
+  }
+
+  async function loadPm() {
+    try {
+      const x = await readAct({ action: "getPartnerMoney" });
+      if (!x || x.error || !x.entries) throw new Error(x && x.error ? x.error : "बैकएंड में नया Code.gs डालकर दोबारा Deploy करो");
+      pmData = x.entries;
+      renderPm();
+    } catch (e) {
+      $("pm").innerHTML = '<div class="empty" style="color:var(--warn)">⚠ ' + esc(e.message) + '</div>';
+    }
+  }
+
+  function renderPm() {
+    if (!pmData) return;
+    const first = pmMonth + "-01", next = monthShift(pmMonth, 1) + "-01";
+    const sgn = v => (v < 0 ? "−" : "") + money(Math.abs(v));
+    const people = [];
+    pmData.forEach(e => { if (e.person && people.indexOf(e.person) === -1) people.push(e.person); });
+    let totalClosing = 0;
+
+    const cards = people.map(n => {
+      let open = 0, put = 0, out = 0;
+      pmData.forEach(e => {
+        if (e.person !== n) return;
+        const amt = Number(e.amount) || 0;
+        if (e.date < first) open += (e.type === "out" ? -amt : amt);
+        else if (e.date < next) { if (e.type === "out") out += amt; else put += amt; }
+      });
+      const closing = open + put - out;
+      totalClosing += closing;
+      return `<div class="p-card">
+        <div class="p-name">${esc(n)}</div>
+        <div class="p-line"><span>पिछले महीनों से बाकी (आगे आया)</span><b>${sgn(open)}</b></div>
+        <div class="p-line"><span>इस महीने लगाया</span><b>+ ${money(put)}</b></div>
+        <div class="p-line"><span>इस महीने वापस लिया</span><b>− ${money(out)}</b></div>
+        <div class="p-line total ${closing < 0 ? 'neg' : ''}"><span>${closing < 0 ? 'ज़्यादा निकाल लिया' : 'अभी बाकी (आगे जुड़ेगा)'}</span><b>${sgn(closing)}</b></div>
+      </div>`;
+    }).join("");
+
+    const list = pmData.filter(e => e.date >= first && e.date < next).slice().sort((a, b) => a.date < b.date ? 1 : -1);
+    const entries = list.map(e => {
+      const f = fmtDay(e.date);
+      return `<div class="pm-entry">
+        <div><b>${esc(e.person)}</b> — ${e.type === "out" ? "वापस लिया" : "लगाया"}
+          <small>${esc(f.main)} (${esc(f.sub)})${e.note ? " · " + esc(e.note) : ""}</small></div>
+        <span class="amt ${e.type}">${e.type === "out" ? "− " : "+ "}${money(e.amount)}</span>
+      </div>`;
+    }).join("");
+
+    $("pm").innerHTML = `
+      <div class="pm-nav">
+        <button class="chip" data-pm="prev">◀</button>
+        <div class="mname">${esc(monthLabel(pmMonth))}</div>
+        <button class="chip" data-pm="next">▶</button>
+      </div>
+      <div class="pm-sum"><div class="small">इस महीने के अंत तक कुल बाकी (सबका)</div><div class="big">${sgn(totalClosing)}</div></div>
+      ${cards || '<div class="empty">अभी तक कोई एंट्री नहीं।</div>'}
+      <div class="pm-sub">📋 इस महीने की एंट्री</div>
+      ${entries || '<div class="empty" style="padding:10px 0;">इस महीने कोई एंट्री नहीं।</div>'}`;
+  }
+  $("pm").addEventListener("click", e => {
+    const b = e.target.closest("[data-pm]"); if (!b) return;
+    pmMonth = monthShift(pmMonth, b.getAttribute("data-pm") === "next" ? 1 : -1);
+    renderPm();
+  });
+
   setRange("month");
   load();
+  loadPm();
 </script>
 </body>
 </html>
