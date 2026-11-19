@@ -70,6 +70,20 @@
   .d small { display:block; font-weight:500; font-size:11.5px; color:var(--soft); }
   .d .fest { color:var(--exp); font-weight:600; }
   .n small { display:block; font-weight:600; font-size:10.5px; color:var(--soft); }
+  .n small.s-cash { color:var(--cash); }
+  .n small.s-onl { color:var(--online); }
+  .row.day { cursor:pointer; -webkit-tap-highlight-color:transparent; }
+  .row.day:focus-visible { outline:2px solid var(--online); outline-offset:-2px; }
+  .d .tap { color:var(--online); font-weight:600; }
+  .det { grid-column:1 / -1; display:none; margin-top:6px; padding:8px 10px; background:var(--tint); border-radius:8px; }
+  .row.open .det { display:block; }
+  .det-line { display:flex; justify-content:space-between; gap:8px; padding:4px 0; border-bottom:1px dashed var(--line); font-size:12.5px; }
+  .det-line:last-child { border-bottom:none; }
+  .det-line b { font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .tag { display:inline-block; font-size:10.5px; font-weight:700; padding:1px 6px; border-radius:8px; margin-left:4px; }
+  .tag.cash { background:var(--card); color:var(--cash); border:1px solid var(--cash); }
+  .tag.onl { background:var(--card); color:var(--online); border:1px solid var(--online); }
+  .sec-name { color:var(--soft); font-size:11px; }
   .empty { padding:22px 14px; text-align:center; color:var(--soft); font-size:14px; }
   .foot { margin:12px 2px 0; font-size:12px; color:var(--soft); }
   @media (max-width:380px) { .row .n { font-size:13px; } .row { padding:9px 8px; gap:4px; } }
@@ -101,7 +115,7 @@
 
   <p class="status" id="status"></p>
   <div id="out"></div>
-  <p class="foot">कैश = उस दिन हाथ में आया पैसा · ऑनलाइन = UPI/ऑनलाइन आया पैसा · खर्च = सामान पर कुल खर्च (ऑनलाइन मँगाया सामान समेत)।</p>
+  <p class="foot">कैश = उस दिन हाथ में आया पैसा · ऑनलाइन = UPI/ऑनलाइन आया पैसा · खर्च = सामान पर कुल खर्च, जिसके नीचे दिखता है कि कितना कैश से और कितना ऑनलाइन हुआ। किसी तारीख़ पर दबाओ तो हर सामान और उसका कैश/ऑनलाइन दिखेगा।</p>
 </div>
 
 <script>
@@ -163,13 +177,36 @@
       return;
     }
 
+    // हर तारीख़ का सामान: कौन सा कैश से आया, कौन सा ऑनलाइन
+    const SEC = { daily: "Daily", momos: "मोमोज़ सामान", packing: "Packing" };
+    const byDate = {};
+    ["daily", "momos", "packing"].forEach(sec => {
+      ((data.items && data.items[sec]) || []).forEach(it => {
+        (it.days || []).forEach(x => {
+          (byDate[x.date] = byDate[x.date] || []).push({ sec: SEC[sec], name: it.name, unit: it.unit || "", qty: x.qty, rate: x.rate, amount: x.amount, online: !!x.online });
+        });
+      });
+    });
+    const qty = v => String(Math.round((Number(v) || 0) * 100) / 100);
+    const split = (exp, onl) => {
+      const o = Number(onl) || 0;
+      return '<small class="s-cash">कैश से ' + money((Number(exp) || 0) - o) + '</small>' +
+             (o ? '<small class="s-onl">ऑनलाइन ' + money(o) + '</small>' : '');
+    };
+
     const rows = days.map(d => {
       const f = fmtDay(d.date);
-      return `<div class="row">
-        <div class="d">${esc(f.main)}<small>${esc(f.sub)}</small>${fest[d.date] ? '<small class="fest">' + esc(fest[d.date]) + '</small>' : ''}</div>
+      const list = byDate[d.date] || [];
+      const lines = list.map(x => `<div class="det-line">
+          <span>${esc(x.name)}<span class="tag ${x.online ? 'onl' : 'cash'}">${x.online ? 'ऑनलाइन' : 'कैश'}</span>
+            <div class="sec-name">${esc(x.sec)} · ${qty(x.qty)} ${esc(x.unit)} × ${money(x.rate)}</div></span>
+          <b>${money(x.amount)}</b></div>`).join("");
+      return `<div class="row day" tabindex="0" role="button" aria-expanded="false">
+        <div class="d">${esc(f.main)}<small>${esc(f.sub)}</small>${fest[d.date] ? '<small class="fest">' + esc(fest[d.date]) + '</small>' : ''}${list.length ? '<small class="tap">सामान देखें ▾</small>' : ''}</div>
         <div class="n c-cash">${money(d.cash)}</div>
         <div class="n c-online">${money(d.online)}</div>
-        <div class="n c-exp">${money(d.expense)}${d.onlineExp ? '<small>ऑनलाइन सामान ' + money(d.onlineExp) + '</small>' : ''}</div>
+        <div class="n c-exp">${money(d.expense)}${split(d.expense, d.onlineExp)}</div>
+        ${list.length ? '<div class="det">' + lines + '</div>' : ''}
       </div>`;
     }).join("");
 
@@ -179,7 +216,7 @@
         <div class="d">कुल<small>${days.length} दिन</small></div>
         <div class="n c-cash">${money(t.cash)}</div>
         <div class="n c-online">${money(t.online)}</div>
-        <div class="n c-exp">${money(t.expense)}</div>
+        <div class="n c-exp">${money(t.expense)}${split(t.expense, t.onlineExp)}</div>
       </div>
       ${rows}
     </div>`;
@@ -212,6 +249,18 @@
   ["from", "to"].forEach(id => $(id).addEventListener("change", () => { markChip(""); load(); }));
   $("sortNew").addEventListener("click", () => { newestFirst = true; $("sortNew").classList.add("on"); $("sortOld").classList.remove("on"); render(); });
   $("sortOld").addEventListener("click", () => { newestFirst = false; $("sortOld").classList.add("on"); $("sortNew").classList.remove("on"); render(); });
+
+  function toggleRow(row) {
+    const open = row.classList.toggle("open");
+    row.setAttribute("aria-expanded", open ? "true" : "false");
+    const tap = row.querySelector(".tap");
+    if (tap) tap.textContent = open ? "बंद करें ▴" : "सामान देखें ▾";
+  }
+  $("out").addEventListener("click", e => { const r = e.target.closest(".row.day"); if (r) toggleRow(r); });
+  $("out").addEventListener("keydown", e => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const r = e.target.closest(".row.day"); if (r) { e.preventDefault(); toggleRow(r); }
+  });
 
   setRange("month");
   load();
