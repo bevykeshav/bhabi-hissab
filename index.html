@@ -1280,8 +1280,9 @@
           <div class="stock-stat"><div class="label">कुल कैश आया</div><div class="value">${money(t.cash)}</div></div>
           <div class="stock-stat"><div class="label">कुल ऑनलाइन आया</div><div class="value">${money(t.online || 0)}</div></div>
           <div class="stock-stat"><div class="label">कुल सामान खर्च</div><div class="value">${money(t.expense)}</div></div>
-          <div class="stock-stat"><div class="label">इसमें ऑनलाइन मँगाया सामान</div><div class="value">${money(t.onlineExp || 0)}</div></div>
           <div class="stock-stat"><div class="label">कुल आमदनी (कैश + ऑनलाइन)</div><div class="value">${money((t.cash || 0) + (t.online || 0))}</div></div>
+          <div class="stock-stat"><div class="label">इसमें कैश से लाया सामान</div><div class="value">${money((t.expense || 0) - (t.onlineExp || 0))}</div></div>
+          <div class="stock-stat"><div class="label">इसमें ऑनलाइन मँगाया सामान</div><div class="value">${money(t.onlineExp || 0)}</div></div>
           <div class="stock-stat earn ${negTotal ? 'neg' : ''}"><div class="label">💰 कुल बचा पैसा (कैश − कैश वाला खर्च, रोज़ का जोड़कर)</div><div class="value">${negTotal ? '−' : ''}${money(Math.abs(t.leftover))}</div></div>
         </div>
         <div class="sub-title">📅 रोज़ का बचा पैसा</div>
@@ -1380,7 +1381,8 @@
     L.push("• कुल ऑनलाइन आया: " + money(t.online || 0));
     L.push("• *कुल आमदनी (कैश + ऑनलाइन): " + money((t.cash || 0) + (t.online || 0)) + "*");
     L.push("• कुल सामान खर्च: " + money(t.expense));
-    if (t.onlineExp) L.push("• इसमें ऑनलाइन मँगाया सामान: " + money(t.onlineExp));
+    L.push("• इसमें कैश से लाया सामान: " + money((t.expense || 0) - (t.onlineExp || 0)));
+    L.push("• इसमें ऑनलाइन मँगाया सामान: " + money(t.onlineExp || 0));
     L.push("• *कुल बचा पैसा: " + sgn(t.leftover) + "*");
     L.push("");
     L.push("📅 *रोज़ का बचा पैसा*");
