@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Crave Kitchen — रिकॉर्ड</title>
 <meta name="theme-color" content="#1F6B4F">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Crave रिकॉर्ड">
 <style>
   :root {
     --bg:#F2F5F3; --card:#FFFFFF; --ink:#14201C; --soft:#5A6B64; --line:#D9E1DD;
@@ -16,163 +19,208 @@
       --cash:#6FCB9F; --online:#7FB0F0; --exp:#F09A88; --tint:#1F2D27; --warn:#F09A88;
     }
   }
-  * { box-sizing:border-box; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html { -webkit-text-size-adjust:100%; }
   body {
     margin:0; background:var(--bg); color:var(--ink);
     font-family:-apple-system,"Segoe UI",Roboto,"Noto Sans Devanagari",sans-serif;
-    line-height:1.45;
-    padding:0 10px max(40px, env(safe-area-inset-bottom));
+    font-size:15px; line-height:1.45;
+    padding-bottom:calc(84px + env(safe-area-inset-bottom));
   }
-  .wrap { max-width:720px; margin:0 auto; }
+  button { font-family:inherit; touch-action:manipulation; cursor:pointer; }
+  button:focus-visible, input:focus-visible { outline:2px solid var(--online); outline-offset:2px; }
 
-  header {
-    padding:max(14px, env(safe-area-inset-top)) 2px 10px;
-    display:flex; align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap;
-  }
-  h1 { margin:0; font-size:20px; font-weight:800; letter-spacing:-.2px; }
-  .lock { font-size:12px; color:var(--soft); }
+  /* ऊपर की पट्टी (हेडर + तारीख़ चुनने वाली पट्टी) — स्क्रॉल पर टिकी रहती है */
+  .sticky { position:sticky; top:0; z-index:30; background:var(--bg); border-bottom:1px solid var(--line);
+    padding:max(8px, env(safe-area-inset-top)) 12px 0; }
+  .t1 { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:44px; }
+  h1 { margin:0; font-size:19px; font-weight:800; letter-spacing:-.2px; }
+  .lock { display:block; font-size:11.5px; color:var(--soft); margin-top:-2px; }
+  .icon { width:44px; height:44px; border-radius:22px; border:1px solid var(--line); background:var(--card);
+    color:var(--ink); font-size:20px; line-height:1; }
+  .icon.spin { animation:sp .8s linear infinite; }
+  @keyframes sp { to { transform:rotate(360deg); } }
 
-  .panel {
-    background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px;
-  }
-  .dates { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-  .dates label { display:block; font-size:12px; font-weight:700; color:var(--soft); margin-bottom:3px; }
-  .dates input {
-    width:100%; min-height:44px; font-size:16px; font-weight:700; padding:8px 10px;
-    border:1.5px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink);
-  }
-  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
-  .chip {
-    min-height:38px; padding:6px 13px; font-size:13px; font-weight:600; cursor:pointer;
-    border:1px solid var(--line); border-radius:19px; background:var(--bg); color:var(--soft);
-  }
+  .chips { display:flex; gap:8px; overflow-x:auto; padding:6px 0 10px; scrollbar-width:none; }
+  .chips::-webkit-scrollbar { display:none; }
+  .chip { flex:none; min-height:40px; padding:0 15px; font-size:14px; font-weight:600; white-space:nowrap;
+    border:1px solid var(--line); border-radius:20px; background:var(--card); color:var(--soft); }
   .chip.on { background:var(--ink); color:var(--bg); border-color:var(--ink); }
-  .chip:focus-visible, .dates input:focus-visible { outline:2px solid var(--online); outline-offset:2px; }
-  .status { min-height:20px; margin:10px 2px 4px; font-size:13px; color:var(--soft); }
-  .status.err { color:var(--warn); }
+  .custom { display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:0 0 10px; }
+  .custom[hidden] { display:none; }
+  .custom label { display:block; font-size:12px; font-weight:700; color:var(--soft); margin-bottom:3px; }
+  .custom input { width:100%; min-height:46px; font-size:16px; font-weight:700; padding:8px 10px;
+    border:1.5px solid var(--line); border-radius:10px; background:var(--card); color:var(--ink); }
+  .rlabel { font-size:12.5px; color:var(--soft); padding:0 0 8px; }
+  .sticky.nofilter .chips, .sticky.nofilter .custom, .sticky.nofilter .rlabel { display:none; }
+  .sticky.nofilter { padding-bottom:8px; }
 
-  /* बही-खाता: तारीख | कैश | ऑनलाइन | खर्च */
-  .ledger { margin-top:6px; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
-  .row {
-    display:grid; grid-template-columns:minmax(78px,1.15fr) 1fr 1fr 1fr; gap:6px; align-items:start;
-    padding:10px 12px; border-bottom:1px solid var(--line);
-  }
-  .row:last-child { border-bottom:none; }
-  .row.head { background:var(--tint); padding-top:8px; padding-bottom:8px; font-size:12px; font-weight:700; color:var(--soft); }
-  .row.total { background:var(--tint); font-weight:800; border-bottom:2px solid var(--ink); }
-  .row .n { text-align:right; font-variant-numeric:tabular-nums; font-size:14px; font-weight:700; white-space:nowrap; }
-  .row.head .n { font-weight:700; font-size:12px; }
-  .c-cash { color:var(--cash); }
-  .c-online { color:var(--online); }
-  .c-exp { color:var(--exp); }
-  .d { font-weight:700; font-size:14px; }
-  .d small { display:block; font-weight:500; font-size:11.5px; color:var(--soft); }
-  .d .fest { color:var(--exp); font-weight:600; }
-  .n small { display:block; font-weight:600; font-size:10.5px; color:var(--soft); }
-  .n small.s-cash { color:var(--cash); }
-  .n small.s-onl { color:var(--online); }
-  .row.day { cursor:pointer; -webkit-tap-highlight-color:transparent; }
-  .row.day:focus-visible { outline:2px solid var(--online); outline-offset:-2px; }
-  .d .tap { color:var(--online); font-weight:600; }
-  .det { grid-column:1 / -1; display:none; margin-top:6px; padding:8px 10px; background:var(--tint); border-radius:8px; }
-  .row.open .det { display:block; }
-  .det-line { display:flex; justify-content:space-between; gap:8px; padding:4px 0; border-bottom:1px dashed var(--line); font-size:12.5px; }
-  .det-line:last-child { border-bottom:none; }
-  .det-line b { font-variant-numeric:tabular-nums; white-space:nowrap; }
-  .tag { display:inline-block; font-size:10.5px; font-weight:700; padding:1px 6px; border-radius:8px; margin-left:4px; }
-  .tag.cash { background:var(--card); color:var(--cash); border:1px solid var(--cash); }
-  .tag.onl { background:var(--card); color:var(--online); border:1px solid var(--online); }
-  .sec-name { color:var(--soft); font-size:11px; }
-  .bal { grid-column:1 / -1; margin-top:2px; padding-top:7px; border-top:1px dashed var(--line); font-size:12.5px; font-weight:600; color:var(--soft); }
+  main { padding:12px 12px 0; max-width:640px; margin:0 auto; }
+  .view { display:none; }
+  .view.on { display:block; }
+  .status { min-height:0; margin:0 0 10px; font-size:13.5px; color:var(--soft); }
+  .status:empty { display:none; }
+  .status.err { color:var(--warn); font-weight:600; }
+  .empty { padding:26px 14px; text-align:center; color:var(--soft); font-size:14px;
+    background:var(--card); border:1px solid var(--line); border-radius:14px; }
+
+  /* कार्ड */
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px; margin-bottom:10px; }
+  .card.sum { border:2px solid var(--ink); }
+  .ch { display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-bottom:8px; }
+  .ch .dd b { font-size:16px; font-weight:800; }
+  .ch .dd .wd { margin-left:6px; font-size:13px; color:var(--soft); font-weight:600; }
+  .ch .fest { font-size:12px; font-weight:700; color:var(--exp); text-align:right; }
+  .ch .ttl { font-size:15px; font-weight:800; }
+  .ch .sub { font-size:12px; color:var(--soft); }
+
+  .trio { display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; }
+  .k { background:var(--tint); border-radius:10px; padding:8px 6px; text-align:center; min-width:0; }
+  .k label { display:block; font-size:11.5px; font-weight:700; color:var(--soft); }
+  .k b { display:block; font-size:16px; font-weight:800; font-variant-numeric:tabular-nums; margin-top:1px; word-break:break-word; }
+  .k small { display:block; font-size:10.5px; font-weight:600; color:var(--soft); margin-top:2px; line-height:1.3; }
+  .k.cash b { color:var(--cash); }
+  .k.online b { color:var(--online); }
+  .k.exp b { color:var(--exp); }
+  .k small.s-cash { color:var(--cash); }
+  .k small.s-onl { color:var(--online); }
+
+  .bal { margin-top:8px; padding-top:8px; border-top:1px dashed var(--line); font-size:13px; font-weight:600; color:var(--soft); }
   .bal .ln { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:1px 0; }
-  .bal .ln b { font-size:14px; font-weight:800; font-variant-numeric:tabular-nums; white-space:nowrap; color:var(--ink); }
-  .bal .ln.res b { font-size:15px; }
+  .bal .ln b { font-size:14.5px; font-weight:800; font-variant-numeric:tabular-nums; color:var(--ink); white-space:nowrap; }
+  .bal .ln.res b { font-size:17px; }
   .bal.pos .ln.res b { color:var(--cash); }
   .bal.neg .ln.res b { color:var(--exp); }
-  .it-title { margin:22px 2px 8px; font-size:17px; font-weight:800; }
-  .it-sec { background:var(--card); border:1px solid var(--line); border-radius:10px; margin-bottom:10px; overflow:hidden; }
-  .it-head { display:flex; justify-content:space-between; gap:8px; padding:9px 12px; background:var(--tint); font-weight:800; font-size:14px; }
-  .it-head b { font-variant-numeric:tabular-nums; color:var(--exp); }
-  .it-row { display:grid; grid-template-columns:1.4fr 1fr 1fr; gap:6px; padding:9px 12px; border-top:1px solid var(--line); align-items:start; }
-  .it-row .nm { font-weight:700; font-size:14px; }
-  .it-row .nm small, .it-row .qt small { display:block; font-weight:500; font-size:11px; color:var(--soft); }
-  .it-row .qt, .it-row .am { text-align:right; font-variant-numeric:tabular-nums; font-size:14px; font-weight:700; white-space:nowrap; }
+
+  .more { width:100%; min-height:44px; margin-top:8px; border:1px solid var(--line); border-radius:10px;
+    background:var(--bg); color:var(--online); font-size:13.5px; font-weight:700; }
+  .det { display:none; margin-top:8px; padding:4px 10px; background:var(--tint); border-radius:10px; }
+  .day.open .det { display:block; }
+  .det-line { display:flex; justify-content:space-between; gap:8px; padding:8px 0; border-bottom:1px dashed var(--line); font-size:13.5px; }
+  .det-line:last-child { border-bottom:none; }
+  .det-line b { font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .tag { display:inline-block; font-size:10.5px; font-weight:700; padding:1px 7px; border-radius:9px; margin-left:5px; background:var(--card); }
+  .tag.cash { color:var(--cash); border:1px solid var(--cash); }
+  .tag.onl { color:var(--online); border:1px solid var(--online); }
+  .sec-name { color:var(--soft); font-size:11.5px; }
+
+  .sortrow { display:flex; gap:8px; margin:0 0 10px; }
+  .sortrow .chip { flex:1; min-height:42px; padding:0 8px; }
+
+  /* सामान इस्तेमाल */
+  .it-head { display:flex; justify-content:space-between; gap:8px; font-weight:800; font-size:15px; margin-bottom:4px; }
+  .it-head b { color:var(--exp); font-variant-numeric:tabular-nums; }
+  .it-row { display:grid; grid-template-columns:1.3fr 1fr 1fr; gap:6px; padding:9px 0; border-top:1px solid var(--line); align-items:start; }
+  .it-row.hd { border-top:none; padding:4px 0 2px; }
+  .it-row.hd div { font-size:11.5px; font-weight:700; color:var(--soft); }
+  .it-row .nm { font-weight:700; font-size:14.5px; min-width:0; word-break:break-word; }
+  .it-row .qt, .it-row .am { text-align:right; font-variant-numeric:tabular-nums; font-size:14px; font-weight:700; }
   .it-row .am { color:var(--exp); }
-  .it-row.hd { background:transparent; font-size:11.5px; font-weight:700; color:var(--soft); border-top:none; padding-top:7px; padding-bottom:3px; }
-  .it-row.hd div { font-weight:700; font-size:11.5px; color:var(--soft); }
-  .pm-title { margin:22px 2px 8px; font-size:17px; font-weight:800; }
-  .pm-nav { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; }
-  .pm-nav .mname { font-weight:800; font-size:16px; flex:1; text-align:center; }
-  .pm-sum { background:var(--tint); border-radius:10px; padding:10px; text-align:center; margin-bottom:10px; }
-  .pm-sum .big { font-size:24px; font-weight:800; color:var(--cash); font-variant-numeric:tabular-nums; }
-  .pm-sum .small { font-size:12px; color:var(--soft); }
-  .p-card { border:1px solid var(--line); border-radius:10px; padding:12px; margin-bottom:10px; }
-  .p-name { font-weight:800; font-size:16px; margin-bottom:6px; }
-  .p-line { display:flex; justify-content:space-between; gap:8px; padding:5px 0; font-size:14px; border-bottom:1px dashed var(--line); }
+  .it-row small { display:block; font-weight:500; font-size:10.5px; color:var(--soft); line-height:1.3; }
+
+  /* जेब से पैसा */
+  .pm-nav { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+  .pm-nav .mname { flex:1; text-align:center; font-weight:800; font-size:17px; }
+  .navbtn { width:52px; height:48px; border-radius:12px; border:1px solid var(--line); background:var(--card); color:var(--ink); font-size:18px; }
+  .pm-sum { background:var(--tint); border-radius:12px; padding:12px; text-align:center; margin-bottom:10px; }
+  .pm-sum .big { font-size:27px; font-weight:800; color:var(--cash); font-variant-numeric:tabular-nums; }
+  .pm-sum .small { font-size:12.5px; color:var(--soft); }
+  .p-name { font-weight:800; font-size:16px; margin-bottom:4px; }
+  .p-line { display:flex; justify-content:space-between; gap:8px; padding:7px 0; font-size:14px; border-bottom:1px dashed var(--line); }
   .p-line:last-child { border-bottom:none; }
   .p-line b { font-variant-numeric:tabular-nums; white-space:nowrap; }
-  .p-line.total { border-top:2px solid var(--ink); border-bottom:none; margin-top:4px; padding-top:8px; font-weight:800; }
-  .p-line.total b { color:var(--cash); }
+  .p-line.total { border-top:2px solid var(--ink); border-bottom:none; margin-top:4px; padding-top:10px; font-weight:800; }
+  .p-line.total b { color:var(--cash); font-size:16px; }
   .p-line.total.neg b { color:var(--exp); }
-  .pm-entry { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--line); font-size:13.5px; }
+  .pm-entry { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 0; border-bottom:1px solid var(--line); font-size:14px; }
   .pm-entry:last-child { border-bottom:none; }
-  .pm-entry small { display:block; color:var(--soft); font-size:11.5px; }
+  .pm-entry small { display:block; color:var(--soft); font-size:12px; }
   .pm-entry .amt { font-weight:800; font-variant-numeric:tabular-nums; white-space:nowrap; }
   .pm-entry .amt.put { color:var(--cash); }
   .pm-entry .amt.out { color:var(--exp); }
-  .pm-sub { margin:10px 0 2px; font-weight:800; font-size:14px; }
-  .row.total .bal { border-top-color:var(--soft); color:var(--ink); font-weight:700; }
-  .empty { padding:22px 14px; text-align:center; color:var(--soft); font-size:14px; }
-  .foot { margin:12px 2px 0; font-size:12px; color:var(--soft); }
-  @media (max-width:380px) { .row .n { font-size:13px; } .row { padding:9px 8px; gap:4px; } }
+  .pm-sub { margin:14px 2px 4px; font-weight:800; font-size:14.5px; }
+
+  .foot { margin:14px 2px 0; font-size:12px; color:var(--soft); line-height:1.5; }
+
+  /* नीचे की टैब पट्टी */
+  .bottom { position:fixed; left:0; right:0; bottom:0; z-index:40; display:grid; grid-template-columns:repeat(3, 1fr);
+    background:var(--card); border-top:1px solid var(--line); padding-bottom:env(safe-area-inset-bottom); }
+  .bottom button { border:none; background:transparent; color:var(--soft); min-height:58px; padding:6px 4px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+    font-size:12px; font-weight:700; border-top:3px solid transparent; }
+  .bottom button .ic { font-size:21px; line-height:1; }
+  .bottom button.on { color:var(--cash); border-top-color:var(--cash); }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <h1>Crave Kitchen — रिकॉर्ड</h1>
-    <span class="lock">🔒 सिर्फ़ देखने के लिए</span>
-  </header>
 
-  <div class="panel">
-    <div class="dates">
-      <div><label for="from">से</label><input type="date" id="from"></div>
-      <div><label for="to">तक</label><input type="date" id="to"></div>
+<div class="sticky" id="sticky">
+  <div class="t1">
+    <div>
+      <h1>Crave Kitchen — रिकॉर्ड</h1>
+      <span class="lock">🔒 सिर्फ़ देखने के लिए</span>
     </div>
-    <div class="chips" id="chips">
-      <button class="chip" data-r="today">आज</button>
-      <button class="chip" data-r="week">पिछले 7 दिन</button>
-      <button class="chip on" data-r="month">इस महीने</button>
-      <button class="chip" data-r="lastmonth">पिछला महीना</button>
-    </div>
-    <div class="chips" style="margin-top:8px;">
+    <button class="icon" id="refresh" aria-label="ताज़ा करो">↻</button>
+  </div>
+  <div class="chips" id="chips">
+    <button class="chip" data-r="today">आज</button>
+    <button class="chip" data-r="week">पिछले 7 दिन</button>
+    <button class="chip on" data-r="month">इस महीने</button>
+    <button class="chip" data-r="lastmonth">पिछला महीना</button>
+    <button class="chip" data-r="custom">📅 अपनी तारीख़</button>
+  </div>
+  <div class="custom" id="custom" hidden>
+    <div><label for="from">से</label><input type="date" id="from"></div>
+    <div><label for="to">तक</label><input type="date" id="to"></div>
+  </div>
+  <div class="rlabel" id="rlabel"></div>
+</div>
+
+<main>
+  <p class="status" id="status"></p>
+
+  <section class="view on" id="vDays">
+    <div id="sumBox"></div>
+    <div class="sortrow">
       <button class="chip on" id="sortNew">नई तारीख़ पहले</button>
       <button class="chip" id="sortOld">पुरानी तारीख़ पहले</button>
     </div>
-  </div>
+    <div id="dayList"></div>
+    <p class="foot">कैश = उस दिन हाथ में आया पैसा · ऑनलाइन = UPI/ऑनलाइन आया पैसा · खर्च = सामान पर कुल खर्च (कैश + ऑनलाइन)। कुल आया = कैश + ऑनलाइन। सामान लाने के बाद बचा = कुल आया − सामान का कुल खर्च। किसी तारीख़ का "सामान देखें" दबाओ तो हर सामान और उसका कैश/ऑनलाइन दिखेगा।</p>
+  </section>
 
-  <p class="status" id="status"></p>
-  <div id="out"></div>
-  <div id="items"></div>
+  <section class="view" id="vItems">
+    <div id="items"></div>
+  </section>
 
-  <h2 class="pm-title">🤝 अपनी जेब से लगाया पैसा</h2>
-  <div class="panel" id="pm"><div class="empty">⏳ आ रहा है…</div></div>
-  <p class="foot">कैश = उस दिन हाथ में आया पैसा · ऑनलाइन = UPI/ऑनलाइन आया पैसा · खर्च = सामान पर कुल खर्च, जिसके नीचे दिखता है कि कितना कैश से और कितना ऑनलाइन हुआ। कुल आया = कैश + ऑनलाइन। सामान लाने के बाद बचा = कुल आया − सामान का कुल खर्च (कैश और ऑनलाइन दोनों से लाया)। किसी तारीख़ पर दबाओ तो हर सामान और उसका कैश/ऑनलाइन दिखेगा।</p>
-</div>
+  <section class="view" id="vPm">
+    <div id="pm"><div class="empty">⏳ आ रहा है…</div></div>
+  </section>
+</main>
+
+<nav class="bottom" id="bottom">
+  <button class="on" data-t="vDays"><span class="ic">📅</span>तारीख़वार</button>
+  <button data-t="vItems"><span class="ic">📦</span>सामान</button>
+  <button data-t="vPm"><span class="ic">🤝</span>जेब से पैसा</button>
+</nav>
 
 <script>
   // वही Apps Script URL जो Crave Kitchen ऐप में है। ये ऐप इससे सिर्फ़ पढ़ता है, कुछ लिखता या बदलता नहीं।
   const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwxfbXIxB67r8No6xIIVlJ8jU6wTFl0wXYgE8k7ocv39iair5yNpIsN1URATatIuGrE1Q/exec";
 
   const WD = ["रवि","सोम","मंगल","बुध","गुरु","शुक्र","शनि"];
+  const MONTHS_HI = ["जनवरी","फ़रवरी","मार्च","अप्रैल","मई","जून","जुलाई","अगस्त","सितंबर","अक्टूबर","नवंबर","दिसंबर"];
   let data = null;
   let newestFirst = true;
+  let pmData = null;
+  let pmMonth = "";
 
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
   const money = v => "₹" + Math.round(Number(v) || 0).toLocaleString("en-IN");
   const ymd = d => { const z = d.getTimezoneOffset() * 60000; return new Date(d - z).toISOString().slice(0, 10); };
+  const qtyStr = v => String(Math.round((Number(v) || 0) * 100) / 100);
+  pmMonth = ymd(new Date()).slice(0, 7);
 
   function fmtDay(s) {
     const d = new Date(s + "T12:00:00");
@@ -180,21 +228,24 @@
     const p = s.split("-");
     return { main: p[2] + "-" + p[1] + "-" + p[0].slice(2), sub: WD[d.getDay()] };
   }
+  function fmtLong(s) { const p = String(s).split("-"); return p.length === 3 ? p[2] + "-" + p[1] + "-" + p[0] : s; }
 
-  // सिर्फ़ पढ़ने वाली कॉल (JSONP, action = getRangeSummary)
-  function readRange(from, to) {
+  // सिर्फ़ पढ़ने वाली कॉल (JSONP)
+  let cbN = 0;
+  function readAct(params) {
     return new Promise((resolve, reject) => {
-      const cb = "cb_" + Date.now();
+      const cb = "rcb_" + Date.now() + "_" + (cbN++);
       const timer = setTimeout(() => { clean(); reject(new Error("जवाब नहीं आया, दोबारा कोशिश करो")); }, 20000);
-      const s = document.createElement("script");
-      function clean() { clearTimeout(timer); delete window[cb]; if (s.parentNode) s.parentNode.removeChild(s); }
-      window[cb] = r => { clean(); resolve(r); };
-      s.onerror = () => { clean(); reject(new Error("इंटरनेट या सर्वर की दिक्कत")); };
-      s.src = SCRIPT_URL + "?" + new URLSearchParams({ action: "getRangeSummary", from, to, callback: cb, _t: Date.now() });
-      document.body.appendChild(s);
+      const sc = document.createElement("script");
+      function clean() { clearTimeout(timer); delete window[cb]; if (sc.parentNode) sc.parentNode.removeChild(sc); }
+      window[cb] = x => { clean(); resolve(x); };
+      sc.onerror = () => { clean(); reject(new Error("इंटरनेट या सर्वर की दिक्कत")); };
+      sc.src = SCRIPT_URL + "?" + new URLSearchParams(Object.assign({}, params, { callback: cb, _t: Date.now() }));
+      document.body.appendChild(sc);
     });
   }
 
+  // ---------- तारीख़ चुनना ----------
   function setRange(kind) {
     const now = new Date();
     let from = new Date(now), to = new Date(now);
@@ -207,21 +258,65 @@
     $("from").value = ymd(from);
     $("to").value = ymd(to);
   }
+  function markChip(kind) {
+    document.querySelectorAll("#chips .chip").forEach(c => c.classList.toggle("on", c.dataset.r === kind));
+  }
 
-  function render() {
-    const out = $("out");
-    renderItems();
-    if (!data) { out.innerHTML = ""; return; }
-    const days = (data.days || []).slice().sort((a, b) => newestFirst ? (a.date < b.date ? 1 : -1) : (a.date < b.date ? -1 : 1));
+  async function load() {
+    const from = $("from").value, to = $("to").value || from;
+    if (!from) return;
+    const st = $("status");
+    st.className = "status"; st.textContent = "⏳ रिकॉर्ड आ रहा है…";
+    $("rlabel").textContent = fmtLong(from) + " से " + fmtLong(to);
+    try {
+      const r = await readAct({ action: "getRangeSummary", from, to });
+      if (!r || r.error || !r.totals) throw new Error(r && r.error ? r.error : "बैकएंड से जवाब ठीक नहीं आया");
+      data = r;
+      st.textContent = "";
+    } catch (e) {
+      data = null;
+      st.className = "status err"; st.textContent = "⚠ " + e.message;
+    }
+    render();
+  }
+
+  // ---------- तारीख़वार ----------
+  function balHtml(income, expense, label) {
+    const inc = Number(income) || 0;
+    const left = inc - (Number(expense) || 0);
+    return '<div class="bal ' + (left < 0 ? 'neg' : 'pos') + '">' +
+      '<div class="ln"><span>कुल आया (कैश + ऑनलाइन)</span><b>' + money(inc) + '</b></div>' +
+      '<div class="ln res"><span>' + label + '</span><b>' + (left < 0 ? '−' : '') + money(Math.abs(left)) + '</b></div></div>';
+  }
+  function splitHtml(exp, onl) {
+    const o = Number(onl) || 0;
+    return '<small class="s-cash">कैश से ' + money((Number(exp) || 0) - o) + '</small>' +
+           (o ? '<small class="s-onl">ऑनलाइन ' + money(o) + '</small>' : '');
+  }
+  function trio(cash, online, expense, onlExp) {
+    return '<div class="trio">' +
+      '<div class="k cash"><label>कैश</label><b>' + money(cash) + '</b></div>' +
+      '<div class="k online"><label>ऑनलाइन</label><b>' + money(online) + '</b></div>' +
+      '<div class="k exp"><label>खर्च</label><b>' + money(expense) + '</b>' + splitHtml(expense, onlExp) + '</div></div>';
+  }
+
+  function renderDays() {
+    const sum = $("sumBox"), list = $("dayList");
+    if (!data) { sum.innerHTML = ""; list.innerHTML = ""; return; }
     const t = data.totals || {};
     const fest = data.festivals || {};
+    const days = (data.days || []).slice().sort((a, b) => newestFirst ? (a.date < b.date ? 1 : -1) : (a.date < b.date ? -1 : 1));
 
     if (!days.length) {
-      out.innerHTML = '<div class="ledger"><div class="empty">इन तारीख़ों में कोई एंट्री नहीं मिली।</div></div>';
+      sum.innerHTML = "";
+      list.innerHTML = '<div class="empty">इन तारीख़ों में कोई एंट्री नहीं मिली।</div>';
       return;
     }
 
-    // हर तारीख़ का सामान: कौन सा कैश से आया, कौन सा ऑनलाइन
+    sum.innerHTML = '<div class="card sum"><div class="ch"><span class="ttl">कुल</span><span class="sub">' + days.length + ' दिन</span></div>' +
+      trio(t.cash, t.online, t.expense, t.onlineExp) +
+      balHtml((Number(t.cash) || 0) + (Number(t.online) || 0), t.expense, 'कुल बचा (सामान लाने के बाद)') + '</div>';
+
     const SEC = { daily: "Daily", momos: "मोमोज़ सामान", packing: "Packing" };
     const byDate = {};
     ["daily", "momos", "packing"].forEach(sec => {
@@ -231,97 +326,29 @@
         });
       });
     });
-    const qty = v => String(Math.round((Number(v) || 0) * 100) / 100);
-    // कुल आया (कैश + ऑनलाइन) − सामान का कुल खर्च (कैश + ऑनलाइन, दोनों तरह से लाया) = सामान लाने के बाद बचा
-    const balHtml = (income, expense, resLabel) => {
-      const inc = Number(income) || 0;
-      const left = inc - (Number(expense) || 0);
-      return '<div class="bal ' + (left < 0 ? 'neg' : 'pos') + '">' +
-        '<div class="ln"><span>कुल आया (कैश + ऑनलाइन)</span><b>' + money(inc) + '</b></div>' +
-        '<div class="ln res"><span>' + resLabel + '</span><b>' + (left < 0 ? '−' : '') + money(Math.abs(left)) + '</b></div></div>';
-    };
-    const split = (exp, onl) => {
-      const o = Number(onl) || 0;
-      return '<small class="s-cash">कैश से ' + money((Number(exp) || 0) - o) + '</small>' +
-             (o ? '<small class="s-onl">ऑनलाइन ' + money(o) + '</small>' : '');
-    };
 
-    const rows = days.map(d => {
+    list.innerHTML = days.map(d => {
       const f = fmtDay(d.date);
-      const list = byDate[d.date] || [];
-      const lines = list.map(x => `<div class="det-line">
-          <span>${esc(x.name)}<span class="tag ${x.online ? 'onl' : 'cash'}">${x.online ? 'ऑनलाइन' : 'कैश'}</span>
-            <div class="sec-name">${esc(x.sec)} · ${qty(x.qty)} ${esc(x.unit)} × ${money(x.rate)}</div></span>
-          <b>${money(x.amount)}</b></div>`).join("");
-      return `<div class="row day" tabindex="0" role="button" aria-expanded="false">
-        <div class="d">${esc(f.main)}<small>${esc(f.sub)}</small>${fest[d.date] ? '<small class="fest">' + esc(fest[d.date]) + '</small>' : ''}${list.length ? '<small class="tap">सामान देखें ▾</small>' : ''}</div>
-        <div class="n c-cash">${money(d.cash)}</div>
-        <div class="n c-online">${money(d.online)}</div>
-        <div class="n c-exp">${money(d.expense)}${split(d.expense, d.onlineExp)}</div>
-        ${balHtml((Number(d.cash) || 0) + (Number(d.online) || 0), d.expense, 'सामान लाने के बाद बचा')}
-        ${list.length ? '<div class="det">' + lines + '</div>' : ''}
-      </div>`;
+      const items = byDate[d.date] || [];
+      const lines = items.map(x => '<div class="det-line"><span>' + esc(x.name) +
+        '<span class="tag ' + (x.online ? 'onl' : 'cash') + '">' + (x.online ? 'ऑनलाइन' : 'कैश') + '</span>' +
+        '<div class="sec-name">' + esc(x.sec) + ' · ' + qtyStr(x.qty) + ' ' + esc(x.unit) + ' × ' + money(x.rate) + '</div></span>' +
+        '<b>' + money(x.amount) + '</b></div>').join("");
+      return '<article class="card day">' +
+        '<div class="ch"><div class="dd"><b>' + esc(f.main) + '</b><span class="wd">' + esc(f.sub) + '</span></div>' +
+        (fest[d.date] ? '<div class="fest">🎉 ' + esc(fest[d.date]) + '</div>' : '') + '</div>' +
+        trio(d.cash, d.online, d.expense, d.onlineExp) +
+        balHtml((Number(d.cash) || 0) + (Number(d.online) || 0), d.expense, 'सामान लाने के बाद बचा') +
+        (items.length ? '<button class="more" aria-expanded="false" data-n="' + items.length + '">सामान देखें (' + items.length + ') ▾</button><div class="det">' + lines + '</div>' : '') +
+        '</article>';
     }).join("");
-
-    out.innerHTML = `<div class="ledger">
-      <div class="row head"><div>तारीख़</div><div class="n">कैश</div><div class="n">ऑनलाइन</div><div class="n">खर्च</div></div>
-      <div class="row total">
-        <div class="d">कुल<small>${days.length} दिन</small></div>
-        <div class="n c-cash">${money(t.cash)}</div>
-        <div class="n c-online">${money(t.online)}</div>
-        <div class="n c-exp">${money(t.expense)}${split(t.expense, t.onlineExp)}</div>
-        ${balHtml((Number(t.cash) || 0) + (Number(t.online) || 0), t.expense, 'कुल बचा (सामान लाने के बाद)')}
-      </div>
-      ${rows}
-    </div>`;
   }
 
-  async function load() {
-    const from = $("from").value, to = $("to").value || from;
-    if (!from) return;
-    const st = $("status");
-    st.className = "status"; st.textContent = "⏳ रिकॉर्ड आ रहा है…";
-    try {
-      const r = await readRange(from, to);
-      if (!r || r.error || !r.totals) throw new Error(r && r.error ? r.error : "बैकएंड से जवाब ठीक नहीं आया");
-      data = r;
-      st.textContent = "";
-      render();
-    } catch (e) {
-      data = null; render();
-      st.className = "status err"; st.textContent = "⚠ " + e.message;
-    }
-  }
-
-  function markChip(kind) {
-    document.querySelectorAll("#chips .chip").forEach(c => c.classList.toggle("on", c.dataset.r === kind));
-  }
-  $("chips").addEventListener("click", e => {
-    const b = e.target.closest(".chip"); if (!b) return;
-    setRange(b.dataset.r); markChip(b.dataset.r); load();
-  });
-  ["from", "to"].forEach(id => $(id).addEventListener("change", () => { markChip(""); load(); }));
-  $("sortNew").addEventListener("click", () => { newestFirst = true; $("sortNew").classList.add("on"); $("sortOld").classList.remove("on"); render(); });
-  $("sortOld").addEventListener("click", () => { newestFirst = false; $("sortOld").classList.add("on"); $("sortNew").classList.remove("on"); render(); });
-
-  function toggleRow(row) {
-    const open = row.classList.toggle("open");
-    row.setAttribute("aria-expanded", open ? "true" : "false");
-    const tap = row.querySelector(".tap");
-    if (tap) tap.textContent = open ? "बंद करें ▴" : "सामान देखें ▾";
-  }
-  $("out").addEventListener("click", e => { const r = e.target.closest(".row.day"); if (r) toggleRow(r); });
-  $("out").addEventListener("keydown", e => {
-    if (e.key !== "Enter" && e.key !== " ") return;
-    const r = e.target.closest(".row.day"); if (r) { e.preventDefault(); toggleRow(r); }
-  });
-
-  // 📦 चुनी हुई तारीख़ों में कुल कितना सामान इस्तेमाल हुआ (हर आइटम का कुल, कैश/ऑनलाइन अलग)
+  // ---------- कुल सामान ----------
   function renderItems() {
     const box = $("items");
-    if (!data || !data.items) { box.innerHTML = ""; return; }
+    if (!data || !data.items) { box.innerHTML = '<div class="empty">रिकॉर्ड नहीं मिला।</div>'; return; }
     const SEC = [["daily", "Daily का सामान"], ["momos", "मोमोज़ बनाने का सामान"], ["packing", "Packing"]];
-    const q = v => String(Math.round((Number(v) || 0) * 100) / 100);
     let any = false;
     const blocks = SEC.map(sc => {
       const arr = (data.items[sc[0]] || []);
@@ -336,46 +363,27 @@
           else { cq += Number(x.qty) || 0; ca += Number(x.amount) || 0; }
         });
         const unit = esc(it.unit || "");
-        const split = oq > 0
-          ? '<small>कैश ' + q(cq) + ' ' + unit + ' · ऑनलाइन ' + q(oq) + ' ' + unit + '</small>'
-          : "";
-        const splitAmt = oa > 0 ? '<small>कैश ' + money(ca) + ' · ऑनलाइन ' + money(oa) + '</small>' : "";
+        const qs = oq > 0 ? '<small>कैश ' + qtyStr(cq) + ' · ऑनलाइन ' + qtyStr(oq) + ' ' + unit + '</small>' : "";
+        const as = oa > 0 ? '<small>कैश ' + money(ca) + ' · ऑनलाइन ' + money(oa) + '</small>' : "";
         return '<div class="it-row"><div class="nm">' + esc(it.name) + '</div>' +
-          '<div class="qt">' + q(it.qty) + ' ' + unit + split + '</div>' +
-          '<div class="am">' + money(it.amount) + splitAmt + '</div></div>';
+          '<div class="qt">' + qtyStr(it.qty) + ' ' + unit + qs + '</div>' +
+          '<div class="am">' + money(it.amount) + as + '</div></div>';
       }).join("");
-      return '<div class="it-sec"><div class="it-head"><span>' + sc[1] + '</span><b>' + money(secTotal) + '</b></div>' +
+      return '<div class="card"><div class="it-head"><span>' + sc[1] + '</span><b>' + money(secTotal) + '</b></div>' +
         '<div class="it-row hd"><div>सामान</div><div class="qt">कुल मात्रा</div><div class="am" style="color:var(--soft)">कुल ₹</div></div>' + rows + '</div>';
     }).join("");
-    box.innerHTML = any
-      ? '<h2 class="it-title">📦 कुल सामान इस्तेमाल हुआ</h2>' + blocks
-      : "";
+    box.innerHTML = any ? blocks : '<div class="empty">इन तारीख़ों में कोई सामान नहीं मिला।</div>';
   }
 
-  // ===== 🤝 अपनी जेब से लगाया पैसा (सिर्फ़ देखने के लिए) =====
-  const MONTHS_HI = ["जनवरी","फ़रवरी","मार्च","अप्रैल","मई","जून","जुलाई","अगस्त","सितंबर","अक्टूबर","नवंबर","दिसंबर"];
-  let pmData = null;
-  let pmMonth = ymd(new Date()).slice(0, 7);
+  function render() { renderDays(); renderItems(); }
 
+  // ---------- जेब से पैसा ----------
   function monthShift(m, delta) {
     const p = m.split("-");
     const d = new Date(Number(p[0]), Number(p[1]) - 1 + delta, 1);
     return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
   }
   function monthLabel(m) { const p = m.split("-"); return MONTHS_HI[Number(p[1]) - 1] + " " + p[0]; }
-
-  function readAct(params) {
-    return new Promise((resolve, reject) => {
-      const cb = "pcb_" + Date.now();
-      const timer = setTimeout(() => { clean(); reject(new Error("जवाब नहीं आया, दोबारा कोशिश करो")); }, 20000);
-      const sc = document.createElement("script");
-      function clean() { clearTimeout(timer); delete window[cb]; if (sc.parentNode) sc.parentNode.removeChild(sc); }
-      window[cb] = x => { clean(); resolve(x); };
-      sc.onerror = () => { clean(); reject(new Error("इंटरनेट या सर्वर की दिक्कत")); };
-      sc.src = SCRIPT_URL + "?" + new URLSearchParams(Object.assign({}, params, { callback: cb, _t: Date.now() }));
-      document.body.appendChild(sc);
-    });
-  }
 
   async function loadPm() {
     try {
@@ -406,40 +414,76 @@
       });
       const closing = open + put - out;
       totalClosing += closing;
-      return `<div class="p-card">
-        <div class="p-name">${esc(n)}</div>
-        <div class="p-line"><span>पिछले महीनों से बाकी (आगे आया)</span><b>${sgn(open)}</b></div>
-        <div class="p-line"><span>इस महीने लगाया</span><b>+ ${money(put)}</b></div>
-        <div class="p-line"><span>इस महीने वापस लिया</span><b>− ${money(out)}</b></div>
-        <div class="p-line total ${closing < 0 ? 'neg' : ''}"><span>${closing < 0 ? 'ज़्यादा निकाल लिया' : 'अभी बाकी (आगे जुड़ेगा)'}</span><b>${sgn(closing)}</b></div>
-      </div>`;
+      return '<div class="card"><div class="p-name">' + esc(n) + '</div>' +
+        '<div class="p-line"><span>पिछले महीनों से बाकी (आगे आया)</span><b>' + sgn(open) + '</b></div>' +
+        '<div class="p-line"><span>इस महीने लगाया</span><b>+ ' + money(put) + '</b></div>' +
+        '<div class="p-line"><span>इस महीने वापस लिया</span><b>− ' + money(out) + '</b></div>' +
+        '<div class="p-line total ' + (closing < 0 ? 'neg' : '') + '"><span>' + (closing < 0 ? 'ज़्यादा निकाल लिया' : 'अभी बाकी (आगे जुड़ेगा)') + '</span><b>' + sgn(closing) + '</b></div></div>';
     }).join("");
 
     const list = pmData.filter(e => e.date >= first && e.date < next).slice().sort((a, b) => a.date < b.date ? 1 : -1);
     const entries = list.map(e => {
       const f = fmtDay(e.date);
-      return `<div class="pm-entry">
-        <div><b>${esc(e.person)}</b> — ${e.type === "out" ? "वापस लिया" : "लगाया"}
-          <small>${esc(f.main)} (${esc(f.sub)})${e.note ? " · " + esc(e.note) : ""}</small></div>
-        <span class="amt ${e.type}">${e.type === "out" ? "− " : "+ "}${money(e.amount)}</span>
-      </div>`;
+      return '<div class="pm-entry"><div><b>' + esc(e.person) + '</b> — ' + (e.type === "out" ? "वापस लिया" : "लगाया") +
+        '<small>' + esc(f.main) + ' (' + esc(f.sub) + ')' + (e.note ? ' · ' + esc(e.note) : '') + '</small></div>' +
+        '<span class="amt ' + e.type + '">' + (e.type === "out" ? "− " : "+ ") + money(e.amount) + '</span></div>';
     }).join("");
 
-    $("pm").innerHTML = `
-      <div class="pm-nav">
-        <button class="chip" data-pm="prev">◀</button>
-        <div class="mname">${esc(monthLabel(pmMonth))}</div>
-        <button class="chip" data-pm="next">▶</button>
-      </div>
-      <div class="pm-sum"><div class="small">इस महीने के अंत तक कुल बाकी (सबका)</div><div class="big">${sgn(totalClosing)}</div></div>
-      ${cards || '<div class="empty">अभी तक कोई एंट्री नहीं।</div>'}
-      <div class="pm-sub">📋 इस महीने की एंट्री</div>
-      ${entries || '<div class="empty" style="padding:10px 0;">इस महीने कोई एंट्री नहीं।</div>'}`;
+    $("pm").innerHTML =
+      '<div class="pm-nav"><button class="navbtn" data-pm="prev" aria-label="पिछला महीना">◀</button>' +
+      '<div class="mname">' + esc(monthLabel(pmMonth)) + '</div>' +
+      '<button class="navbtn" data-pm="next" aria-label="अगला महीना">▶</button></div>' +
+      '<div class="pm-sum"><div class="small">इस महीने के अंत तक कुल बाकी (सबका)</div><div class="big">' + sgn(totalClosing) + '</div></div>' +
+      (cards || '<div class="empty">अभी तक कोई एंट्री नहीं।</div>') +
+      '<div class="pm-sub">📋 इस महीने की एंट्री</div>' +
+      '<div class="card">' + (entries || '<div style="padding:6px 0;color:var(--soft);font-size:14px;">इस महीने कोई एंट्री नहीं।</div>') + '</div>';
   }
+
+  // ---------- बटन / टैब ----------
+  $("chips").addEventListener("click", e => {
+    const b = e.target.closest(".chip"); if (!b) return;
+    const k = b.dataset.r;
+    if (k === "custom") {
+      const c = $("custom");
+      c.hidden = !c.hidden;
+      markChip(c.hidden ? "" : "custom");
+      return;
+    }
+    $("custom").hidden = true;
+    setRange(k); markChip(k); load();
+  });
+  ["from", "to"].forEach(id => $(id).addEventListener("change", () => { markChip("custom"); load(); }));
+
+  $("sortNew").addEventListener("click", () => { newestFirst = true; $("sortNew").classList.add("on"); $("sortOld").classList.remove("on"); renderDays(); });
+  $("sortOld").addEventListener("click", () => { newestFirst = false; $("sortOld").classList.add("on"); $("sortNew").classList.remove("on"); renderDays(); });
+
+  $("dayList").addEventListener("click", e => {
+    const b = e.target.closest(".more"); if (!b) return;
+    const card = b.closest(".day");
+    const open = card.classList.toggle("open");
+    b.setAttribute("aria-expanded", open ? "true" : "false");
+    b.textContent = open ? "सामान छुपाओ ▴" : "सामान देखें (" + b.dataset.n + ") ▾";
+  });
+
   $("pm").addEventListener("click", e => {
     const b = e.target.closest("[data-pm]"); if (!b) return;
     pmMonth = monthShift(pmMonth, b.getAttribute("data-pm") === "next" ? 1 : -1);
     renderPm();
+  });
+
+  $("bottom").addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    document.querySelectorAll("#bottom button").forEach(x => x.classList.toggle("on", x === b));
+    document.querySelectorAll(".view").forEach(v => v.classList.toggle("on", v.id === b.dataset.t));
+    $("sticky").classList.toggle("nofilter", b.dataset.t === "vPm");
+    window.scrollTo(0, 0);
+  });
+
+  $("refresh").addEventListener("click", async () => {
+    const r = $("refresh");
+    r.classList.add("spin");
+    await Promise.all([load(), loadPm()]);
+    r.classList.remove("spin");
   });
 
   setRange("month");
