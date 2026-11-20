@@ -108,15 +108,22 @@
   .sortrow .chip { flex:1; min-height:42px; padding:0 8px; }
 
   /* सामान इस्तेमाल */
+  .itm { padding:12px 0; border-top:1px solid var(--line); }
+  .it-head + .itm { border-top:none; padding-top:6px; }
+  .itm-top { display:flex; justify-content:space-between; align-items:baseline; gap:12px; }
+  .itm-top .nm { font-weight:800; font-size:16px; min-width:0; word-break:break-word; }
+  .itm-top .am { font-weight:800; font-size:16px; color:var(--exp); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .itm-qty { margin-top:1px; font-size:13.5px; color:var(--soft); font-weight:600; }
+  .itm-split { margin-top:8px; display:grid; gap:5px; }
+  .sp { display:grid; grid-template-columns:78px 1fr auto; gap:8px; align-items:center;
+    background:var(--tint); border-radius:9px; padding:7px 10px; font-size:13.5px; }
+  .sp .tg { font-size:11.5px; font-weight:800; text-align:center; padding:2px 0; border-radius:10px; background:var(--card); }
+  .sp.c .tg { color:var(--cash); border:1px solid var(--cash); }
+  .sp.o .tg { color:var(--online); border:1px solid var(--online); }
+  .sp .q { font-weight:600; font-variant-numeric:tabular-nums; min-width:0; }
+  .sp .a { font-weight:800; font-variant-numeric:tabular-nums; white-space:nowrap; }
   .it-head { display:flex; justify-content:space-between; gap:8px; font-weight:800; font-size:15px; margin-bottom:4px; }
   .it-head b { color:var(--exp); font-variant-numeric:tabular-nums; }
-  .it-row { display:grid; grid-template-columns:1.3fr 1fr 1fr; gap:6px; padding:9px 0; border-top:1px solid var(--line); align-items:start; }
-  .it-row.hd { border-top:none; padding:4px 0 2px; }
-  .it-row.hd div { font-size:11.5px; font-weight:700; color:var(--soft); }
-  .it-row .nm { font-weight:700; font-size:14.5px; min-width:0; word-break:break-word; }
-  .it-row .qt, .it-row .am { text-align:right; font-variant-numeric:tabular-nums; font-size:14px; font-weight:700; }
-  .it-row .am { color:var(--exp); }
-  .it-row small { display:block; font-weight:500; font-size:10.5px; color:var(--soft); line-height:1.3; }
 
   /* जेब से पैसा */
   .pm-nav { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
@@ -363,14 +370,18 @@
           else { cq += Number(x.qty) || 0; ca += Number(x.amount) || 0; }
         });
         const unit = esc(it.unit || "");
-        const qs = oq > 0 ? '<small>कैश ' + qtyStr(cq) + ' · ऑनलाइन ' + qtyStr(oq) + ' ' + unit + '</small>' : "";
-        const as = oa > 0 ? '<small>कैश ' + money(ca) + ' · ऑनलाइन ' + money(oa) + '</small>' : "";
-        return '<div class="it-row"><div class="nm">' + esc(it.name) + '</div>' +
-          '<div class="qt">' + qtyStr(it.qty) + ' ' + unit + qs + '</div>' +
-          '<div class="am">' + money(it.amount) + as + '</div></div>';
+        // कुछ हिस्सा ऑनलाइन आया हो तभी कैश / ऑनलाइन अलग-अलग लाइन में दिखाओ
+        const split = (oq > 0 || oa > 0)
+          ? '<div class="itm-split">' +
+              '<div class="sp c"><span class="tg">कैश</span><span class="q">' + qtyStr(cq) + ' ' + unit + '</span><span class="a">' + money(ca) + '</span></div>' +
+              '<div class="sp o"><span class="tg">ऑनलाइन</span><span class="q">' + qtyStr(oq) + ' ' + unit + '</span><span class="a">' + money(oa) + '</span></div>' +
+            '</div>'
+          : '';
+        return '<div class="itm"><div class="itm-top"><span class="nm">' + esc(it.name) + '</span><span class="am">' + money(it.amount) + '</span></div>' +
+          '<div class="itm-qty">कुल ' + qtyStr(it.qty) + ' ' + unit + '</div>' + split + '</div>';
       }).join("");
       return '<div class="card"><div class="it-head"><span>' + sc[1] + '</span><b>' + money(secTotal) + '</b></div>' +
-        '<div class="it-row hd"><div>सामान</div><div class="qt">कुल मात्रा</div><div class="am" style="color:var(--soft)">कुल ₹</div></div>' + rows + '</div>';
+        rows + '</div>';
     }).join("");
     box.innerHTML = any ? blocks : '<div class="empty">इन तारीख़ों में कोई सामान नहीं मिला।</div>';
   }
