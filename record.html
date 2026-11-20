@@ -90,6 +90,17 @@
   .bal .ln.res b { font-size:15px; }
   .bal.pos .ln.res b { color:var(--cash); }
   .bal.neg .ln.res b { color:var(--exp); }
+  .it-title { margin:22px 2px 8px; font-size:17px; font-weight:800; }
+  .it-sec { background:var(--card); border:1px solid var(--line); border-radius:10px; margin-bottom:10px; overflow:hidden; }
+  .it-head { display:flex; justify-content:space-between; gap:8px; padding:9px 12px; background:var(--tint); font-weight:800; font-size:14px; }
+  .it-head b { font-variant-numeric:tabular-nums; color:var(--exp); }
+  .it-row { display:grid; grid-template-columns:1.4fr 1fr 1fr; gap:6px; padding:9px 12px; border-top:1px solid var(--line); align-items:start; }
+  .it-row .nm { font-weight:700; font-size:14px; }
+  .it-row .nm small, .it-row .qt small { display:block; font-weight:500; font-size:11px; color:var(--soft); }
+  .it-row .qt, .it-row .am { text-align:right; font-variant-numeric:tabular-nums; font-size:14px; font-weight:700; white-space:nowrap; }
+  .it-row .am { color:var(--exp); }
+  .it-row.hd { background:transparent; font-size:11.5px; font-weight:700; color:var(--soft); border-top:none; padding-top:7px; padding-bottom:3px; }
+  .it-row.hd div { font-weight:700; font-size:11.5px; color:var(--soft); }
   .pm-title { margin:22px 2px 8px; font-size:17px; font-weight:800; }
   .pm-nav { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; }
   .pm-nav .mname { font-weight:800; font-size:16px; flex:1; text-align:center; }
@@ -143,6 +154,7 @@
 
   <p class="status" id="status"></p>
   <div id="out"></div>
+  <div id="items"></div>
 
   <h2 class="pm-title">🤝 अपनी जेब से लगाया पैसा</h2>
   <div class="panel" id="pm"><div class="empty">⏳ आ रहा है…</div></div>
@@ -198,6 +210,7 @@
 
   function render() {
     const out = $("out");
+    renderItems();
     if (!data) { out.innerHTML = ""; return; }
     const days = (data.days || []).slice().sort((a, b) => newestFirst ? (a.date < b.date ? 1 : -1) : (a.date < b.date ? -1 : 1));
     const t = data.totals || {};
@@ -302,6 +315,42 @@
     if (e.key !== "Enter" && e.key !== " ") return;
     const r = e.target.closest(".row.day"); if (r) { e.preventDefault(); toggleRow(r); }
   });
+
+  // 📦 चुनी हुई तारीख़ों में कुल कितना सामान इस्तेमाल हुआ (हर आइटम का कुल, कैश/ऑनलाइन अलग)
+  function renderItems() {
+    const box = $("items");
+    if (!data || !data.items) { box.innerHTML = ""; return; }
+    const SEC = [["daily", "Daily का सामान"], ["momos", "मोमोज़ बनाने का सामान"], ["packing", "Packing"]];
+    const q = v => String(Math.round((Number(v) || 0) * 100) / 100);
+    let any = false;
+    const blocks = SEC.map(sc => {
+      const arr = (data.items[sc[0]] || []);
+      if (!arr.length) return "";
+      any = true;
+      let secTotal = 0;
+      const rows = arr.map(it => {
+        secTotal += Number(it.amount) || 0;
+        let cq = 0, oq = 0, ca = 0, oa = 0;
+        (it.days || []).forEach(x => {
+          if (x.online) { oq += Number(x.qty) || 0; oa += Number(x.amount) || 0; }
+          else { cq += Number(x.qty) || 0; ca += Number(x.amount) || 0; }
+        });
+        const unit = esc(it.unit || "");
+        const split = oq > 0
+          ? '<small>कैश ' + q(cq) + ' ' + unit + ' · ऑनलाइन ' + q(oq) + ' ' + unit + '</small>'
+          : "";
+        const splitAmt = oa > 0 ? '<small>कैश ' + money(ca) + ' · ऑनलाइन ' + money(oa) + '</small>' : "";
+        return '<div class="it-row"><div class="nm">' + esc(it.name) + '</div>' +
+          '<div class="qt">' + q(it.qty) + ' ' + unit + split + '</div>' +
+          '<div class="am">' + money(it.amount) + splitAmt + '</div></div>';
+      }).join("");
+      return '<div class="it-sec"><div class="it-head"><span>' + sc[1] + '</span><b>' + money(secTotal) + '</b></div>' +
+        '<div class="it-row hd"><div>सामान</div><div class="qt">कुल मात्रा</div><div class="am" style="color:var(--soft)">कुल ₹</div></div>' + rows + '</div>';
+    }).join("");
+    box.innerHTML = any
+      ? '<h2 class="it-title">📦 कुल सामान इस्तेमाल हुआ</h2>' + blocks
+      : "";
+  }
 
   // ===== 🤝 अपनी जेब से लगाया पैसा (सिर्फ़ देखने के लिए) =====
   const MONTHS_HI = ["जनवरी","फ़रवरी","मार्च","अप्रैल","मई","जून","जुलाई","अगस्त","सितंबर","अक्टूबर","नवंबर","दिसंबर"];
