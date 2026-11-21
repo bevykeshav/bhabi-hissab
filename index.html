@@ -743,50 +743,56 @@
       (stockRes.entries || []).forEach(e => stockMap[e.itemId] = e);
 
       const stockItems = (stockItemsRes.items || []).filter(it => it.active);
-      let earned = 0;
-      const stockLines = ["🥟 *मोमोज़ स्टॉक*"];
-      let anyStock = false;
+      let made = 0, sold = 0, leftover = 0, available = 0, earned = 0;
+      const stockLines = ["📦 *आज का बना / बिका / बचा स्टॉक*"];
 
-      stockItems.forEach(it => {
-        const e = stockMap[it.id];
-        if (!e) return;   // आज इस आइटम की एंट्री नहीं डाली तो मैसेज में नहीं जाएगा
-        anyStock = true;
-        const prev = prevMap[it.id] || 0;
-        const m = Number(e.made) || 0;
-        const l = Number(e.leftover) || 0;
-        const r = Number(e.rate) || 0;
-        const pcs = Number(e.pcsPerPlate) || 0;
-        const w = Number(e.waste) || 0;
-        const s = prev + m - l - w;
-        const plW = (creamyRes && creamyRes.creamy && String(creamyRes.creamy.baseItemId) === String(it.id)) ? creamyRes.creamy.plates : 0;
-        const frW = Number(e.fried) || 0;
-        const frRW = Number(e.friedRate) || 0;
-        const earn = plateEarn(s, pcs, r, plW) + frW * frRW;
-        earned += earn;
-        stockLines.push("• *" + it.name + "*: " + (prev ? "कल बचा " + prev + ", " : "") + "बना " + m + ", बिका " + s + ", बचा " + l +
-          (w ? ", खराब " + w : "") + (frW ? ", 🍳 फ्राइड " + frW + " प्लेट" : "") + " → 💰 " + money(earn));
-      });
+      if (!stockItems.length) {
+        stockLines.push("• कोई स्टॉक आइटम नहीं");
+      } else {
+        stockItems.forEach(it => {
+          const e = stockMap[it.id];
+          const prev = prevMap[it.id] || 0;
+          const m = e ? Number(e.made) || 0 : 0;
+          const l = e ? Number(e.leftover) || 0 : 0;
+          const r = e ? Number(e.rate) || 0 : 0;
+          const pcs = e ? Number(e.pcsPerPlate) || 0 : 0;
+          const a = prev + m;
+          const w = e ? Number(e.waste) || 0 : 0;
+          const s = a - l - w;
+          const plW = (creamyRes && creamyRes.creamy && String(creamyRes.creamy.baseItemId) === String(it.id)) ? creamyRes.creamy.plates : 0;
+          const frW = e ? Number(e.fried) || 0 : 0;
+          const frRW = e ? Number(e.friedRate) || 0 : 0;
+          const earn = plateEarn(s, pcs, r, plW) + frW * frRW;
+
+          made += m; sold += s; leftover += l; available += a; earned += earn;
+
+          stockLines.push("• *" + it.name + "*");
+          stockLines.push("  कल बचा: " + prev + " " + it.unit);
+          stockLines.push("  आज बना: " + m + " " + it.unit);
+          stockLines.push("  कुल उपलब्ध: " + a + " " + it.unit);
+          stockLines.push("  आज बिका: " + s + " " + it.unit);
+          stockLines.push("  आज बचा: " + l + " " + it.unit);
+          if (w) stockLines.push("  खराब / खाया: " + w + " " + it.unit);
+          if (r) stockLines.push("  ₹/प्लेट: " + money(r) + (pcs ? " (" + pcs + " पीस/प्लेट)" : ""));
+          if (frW) stockLines.push("  🍳 फ्राइड: " + frW + " प्लेट × " + money(frRW) + " एक्स्ट्रा");
+          stockLines.push("  💰 आज की कमाई: " + money(earn));
+        });
+      }
 
       const cmW = creamyRes && creamyRes.creamy;
       if (cmW && cmW.plates > 0) {
         const ceW = cmW.plates * cmW.rate;
         earned += ceW;
-        anyStock = true;
-        stockLines.push("• *🥣 क्रीमी*: " + cmW.plates + " प्लेट × " + money(cmW.rate) + " → 💰 " + money(ceW));
+        stockLines.push("• *🥣 क्रीमी मोमोज़*");
+        stockLines.push("  आज बिकी: " + cmW.plates + " प्लेट × " + money(cmW.rate));
+        stockLines.push("  💰 क्रीमी की कमाई: " + money(ceW));
       }
-      if (!anyStock) stockLines.push("• आज की कोई एंट्री नहीं");
-
       const online = Number(cashRes.online) || 0;
-      // सबसे ज़रूरी आँकड़े ऊपर रखे हैं, ताकि WhatsApp में "और पढ़ें" दबाए बिना कमाई दिख जाए
       const lines = [
-        "📋 *Crave Kitchen — आज का हिसाब*  📅 " + date,
+        "📋 *Crave Kitchen — आज का पूरा हिसाब*",
+        "📅 *तारीख:* " + date,
         "",
-        "💰 *आज की कमाई (स्टॉक से): " + money(earned) + "*",
-        "💵 कुल बिक्री (कैश + ऑनलाइन): " + money(cash + online) + " (कैश " + money(cash) + " + ऑनलाइन " + money(online) + ")",
-        "🛒 सामान खर्च: " + money(expense) + (onlExpense ? " (कैश " + money(cashExpense) + " + ऑनलाइन " + money(onlExpense) + ")" : ""),
-        "✅ *बचा पैसा (कैश − कैश खर्च): " + money(cashLeft) + "*",
-        "",
-        stockLines.join("\n"),
+        "💰 *आज की कमाई (बिक्री): " + money(earned) + "*",
         "",
         daily.text,
         "",
@@ -794,7 +800,24 @@
         "",
         packing.text,
         "",
-        "✅ Crave Kitchen WebApp"
+        "💰 *कैश और खर्च*",
+        "• आज का कैश: " + money(cash),
+        "• आज ऑनलाइन आया: " + money(online),
+        "• कुल बिक्री (कैश + ऑनलाइन): " + money(cash + online),
+        "• स्टॉक के हिसाब से बिक्री: " + money(earned),
+        "• कुल सामान खर्च: " + money(expense) + (onlExpense ? " (कैश " + money(cashExpense) + " + ऑनलाइन " + money(onlExpense) + ")" : ""),
+        "• बचा पैसा (कैश − कैश खर्च): " + money(cashLeft),
+        "",
+        stockLines.join("\n"),
+        "",
+        "📊 *स्टॉक का कुल*",
+        "• आज बना: " + made,
+        "• कुल उपलब्ध: " + available,
+        "• आज बिका: " + sold,
+        "• आज बचा: " + leftover,
+        "• 💰 आज की कमाई (बिक्री): " + money(earned),
+        "",
+        "✅ हिसाब Crave Kitchen WebApp से बनाया गया है।"
       ];
 
       const url = "https://wa.me/?text=" + encodeURIComponent(lines.join("\n"));
@@ -1052,54 +1075,76 @@
         const saved = {};
         (latest.entries || []).forEach(e => { saved[e.itemId] = e; });
 
-        let totalMade = 0, totalSold = 0, totalLeftover = 0, totalEarn = 0;
+        const lines = [];
+        lines.push("📋 *Crave Kitchen — आज का स्टॉक हिसाब*");
+        lines.push("📅 तारीख: " + date);
+        lines.push("");
+
+        let totalMade = 0, totalAvailable = 0, totalLeftover = 0, totalSold = 0, totalEarn = 0;
         let hasData = false;
-        const body = [];
 
         items.forEach(it => {
           const e = saved[it.id];
-          if (!e) return;   // आज इस आइटम की एंट्री नहीं डाली तो मैसेज में नहीं जाएगा
-          hasData = true;
           const prev = prevLeftover[it.id] || 0;
-          const made = Number(e.made) || 0;
-          const leftover = Number(e.leftover) || 0;
-          const rate = Number(e.rate) || 0;
-          const pcs = Number(e.pcsPerPlate) || 0;
-          const waste = Number(e.waste) || 0;
-          const sold = prev + made - leftover - waste;
+          const made = e ? Number(e.made) || 0 : 0;
+          const leftover = e ? Number(e.leftover) || 0 : 0;
+          const rate = e ? Number(e.rate) || 0 : 0;
+          const pcs = e ? Number(e.pcsPerPlate) || 0 : 0;
+          const available = prev + made;
+          const waste = e ? Number(e.waste) || 0 : 0;
+          const sold = available - leftover - waste;
           const plS = (cmS && String(cmS.baseItemId) === String(it.id)) ? cmS.plates : 0;
-          const frS = Number(e.fried) || 0;
-          const frRS = Number(e.friedRate) || 0;
+          const frS = e ? Number(e.fried) || 0 : 0;
+          const frRS = e ? Number(e.friedRate) || 0 : 0;
           const earn = plateEarn(sold, pcs, rate, plS) + frS * frRS;
 
+          if (made || leftover || prev) hasData = true;
+
           totalMade += made;
-          totalSold += sold;
+          totalAvailable += available;
           totalLeftover += leftover;
+          totalSold += sold;
           totalEarn += earn;
 
-          body.push("• *" + it.name + "*: " + (prev ? "कल बचा " + prev + ", " : "") + "बना " + made + ", बिका " + sold + ", बचा " + leftover +
-            (waste ? ", खराब " + waste : "") +
-            (rate ? " | ₹" + Math.round(rate * 100) / 100 + (pcs ? "/" + pcs + " पीस" : "/प्लेट") : "") +
-            (frS ? " | 🍳 फ्राइड " + frS + " प्लेट × " + money(frRS) : "") +
-            " → 💰 " + money(earn));
+          lines.push("🔹 *" + it.name + "*");
+          lines.push("   • कल बचा: " + prev + " " + it.unit);
+          lines.push("   • आज बना: " + made + " " + it.unit);
+          lines.push("   • कुल उपलब्ध: " + available + " " + it.unit);
+          lines.push("   • आज बिका: " + sold + " " + it.unit);
+          lines.push("   • आज बचा: " + leftover + " " + it.unit);
+          if (waste) lines.push("   • खराब / खाया: " + waste + " " + it.unit);
+          if (rate) lines.push("   • ₹/प्लेट: ₹" + Math.round(rate * 100) / 100 + (pcs ? " (" + pcs + " पीस/प्लेट)" : ""));
+          if (frS) lines.push("   • 🍳 फ्राइड: " + frS + " प्लेट × " + money(frRS) + " एक्स्ट्रा");
+          lines.push("   • 💰 कमाई: " + money(earn));
+          lines.push("");
         });
 
         if (cmS && cmS.plates > 0) {
           const ceS = cmS.plates * cmS.rate;
           totalEarn += ceS;
           hasData = true;
-          body.push("• *🥣 क्रीमी*: " + cmS.plates + " प्लेट × " + money(cmS.rate) + " → 💰 " + money(ceS));
+          lines.push("🥣 *क्रीमी मोमोज़*");
+          lines.push("   • आज बिकी: " + cmS.plates + " प्लेट × " + money(cmS.rate));
+          lines.push("   • 💰 कमाई: " + money(ceS));
+          lines.push("");
         }
 
-        // कुल कमाई सबसे ऊपर, ताकि "और पढ़ें" दबाए बिना दिख जाए
-        const lines = [
-          "📋 *Crave Kitchen — आज का स्टॉक हिसाब*  📅 " + date,
-          "",
-          "💰 *आज की कमाई (बिक्री): " + money(totalEarn) + "*",
-          "📊 बना " + totalMade + " | बिका " + totalSold + " | बचा " + totalLeftover,
-          ""
-        ].concat(hasData ? body : ["⚠️ आज अभी कोई स्टॉक एंट्री नहीं है।"]);
-        lines.push("", "✅ Crave Kitchen WebApp");
+        // आज की कुल कमाई सबसे ऊपर (तारीख़ के ठीक नीचे)
+        lines.splice(3, 0, "💰 *आज की कमाई (बिक्री): " + money(totalEarn) + "*", "");
+
+        lines.push("📊 *कुल हिसाब*");
+        lines.push("• आज बना: " + totalMade);
+        lines.push("• कुल उपलब्ध: " + totalAvailable);
+        lines.push("• आज बिका: " + totalSold);
+        lines.push("• आज बचा: " + totalLeftover);
+        lines.push("• 💰 आज की कमाई (बिक्री): " + money(totalEarn));
+        lines.push("");
+        lines.push("✅ हिसाब Crave Kitchen WebApp से बनाया गया है।");
+
+        if (!hasData) {
+          lines.splice(3, 0, "⚠️ आज अभी कोई स्टॉक एंट्री नहीं है।");
+          lines.push("");
+        }
 
         const message = lines.join("\n");
         const url = "https://wa.me/?text=" + encodeURIComponent(message);
