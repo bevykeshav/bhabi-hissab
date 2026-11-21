@@ -192,6 +192,17 @@
   .onl-tag { font-size:11px; font-weight:700; color:var(--clay); }
   table.items-table { min-width:780px; }
 
+  /* सामान खोजना */
+  .search-card { padding:10px 12px; }
+  .search-wrap { position:relative; }
+  .search-wrap input { width:100%; min-height:48px; font-size:16px; font-weight:600; padding:10px 44px 10px 12px;
+    border:1.5px solid var(--line); border-radius:10px; background:var(--paper); color:var(--ink); }
+  .search-wrap button { position:absolute; right:4px; top:2px; width:44px; height:44px; border:none; background:none;
+    font-size:18px; color:var(--ink-soft); cursor:pointer; display:none; }
+  .search-wrap.has button { display:block; }
+  .search-info { font-size:12.5px; color:var(--ink-soft); margin:6px 2px 0; min-height:16px; }
+  .search-info.none { color:var(--clay); font-weight:600; }
+
   /* जेब से पैसा */
   .pm-nav { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; }
   .pm-nav .mname { font-weight:800; font-size:16px; text-align:center; flex:1; }
@@ -257,6 +268,14 @@
       <div class="leftover-value" id="leftoverValue">…</div>
       <div class="leftover-sub" id="leftoverSub"></div>
     </div>
+  </div>
+
+  <div class="card search-card">
+    <div class="search-wrap" id="searchWrap">
+      <input type="search" id="itemSearch" placeholder="🔍 सामान खोजो (English या हिंदी)" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+      <button type="button" id="searchClear" aria-label="खोज साफ़ करो">✕</button>
+    </div>
+    <div class="search-info" id="searchInfo"></div>
   </div>
 
   <div id="sections"></div>
@@ -634,7 +653,108 @@
       await call("addItem", { section, payload: { name, unit } });
       renderSection(section, title);
     });
+    applySearch();   // दोबारा बनी सूची पर चल रही खोज फिर से लगाओ
   }
+
+  // ===================================================================
+  // 🔍 सामान खोजना — English में खोजो तो हिंदी नाम वाला सामान भी मिलेगा (और हिंदी में खोजो तो भी)
+  // हिंदी नाम को अंग्रेज़ी अक्षरों में बदलकर (panir ≈ paneer) और आम नामों की सूची से मिलाया जाता है
+  // ===================================================================
+  const D_CONS = {"क":"k","ख":"kh","ग":"g","घ":"gh","ङ":"n","च":"ch","छ":"chh","ज":"j","झ":"jh","ञ":"n","ट":"t","ठ":"th","ड":"d","ढ":"dh","ण":"n","त":"t","थ":"th","द":"d","ध":"dh","न":"n","प":"p","फ":"ph","ब":"b","भ":"bh","म":"m","य":"y","र":"r","ल":"l","ळ":"l","व":"v","श":"sh","ष":"sh","स":"s","ह":"h"};
+  const D_VOW = {"अ":"a","आ":"aa","इ":"i","ई":"ee","उ":"u","ऊ":"oo","ऋ":"ri","ए":"e","ऐ":"ai","ओ":"o","औ":"au","ऑ":"o"};
+  const D_MATRA = {"ा":"aa","ि":"i","ी":"ee","ु":"u","ू":"oo","े":"e","ै":"ai","ो":"o","ौ":"au","ृ":"ri","ॉ":"o"};
+  const isDev = c => !!c && /[\u0900-\u097F]/.test(c);
+
+  function translit(str) {
+    const ch = Array.from(String(str));
+    let out = "";
+    for (let i = 0; i < ch.length; i++) {
+      const c = ch[i];
+      if (D_CONS[c]) {
+        if (ch[i + 1] === "़") i++;          // नुक़्ता छोड़ दो
+        const nx = ch[i + 1];
+        if (D_MATRA[nx]) { out += D_CONS[c] + D_MATRA[nx]; i++; }
+        else if (nx === "्") { out += D_CONS[c]; i++; }   // आधा अक्षर
+        else out += D_CONS[c] + (isDev(nx) ? "a" : "");    // शब्द के अंत में 'a' नहीं
+      }
+      else if (D_VOW[c]) out += D_VOW[c];
+      else if (c === "ं" || c === "ँ") out += "n";
+      else if (c === "ः") out += "h";
+      else if (isDev(c)) { /* बाकी चिह्न छोड़ दो */ }
+      else out += c;
+    }
+    return out;
+  }
+  // स्वर हटाकर ढाँचा बनाओ: paneer / panir / पनीर → pnr, tomato / tamatar → tmt(r)
+  function skel(s) {
+    return String(s).toLowerCase().replace(/[^a-z]/g, "")
+      .replace(/ph/g, "p").replace(/[cq]/g, "k").replace(/x/g, "ks").replace(/f/g, "p")
+      .replace(/[vw]/g, "b").replace(/z/g, "j").replace(/h/g, "").replace(/[aeiouy]/g, "")
+      .replace(/(.)\1+/g, "$1");
+  }
+  // हिंदी नाम → आम अंग्रेज़ी / रोमन नाम (और भी जोड़ सकते हो)
+  const ALIASES = [
+    ["पनीर", "paneer cheese"], ["गोभी", "gobhi cauliflower gobi"], ["पत्ता गोभी", "patta gobhi cabbage"],
+    ["प्याज", "pyaz pyaaz onion"], ["धनिया", "dhaniya coriander"], ["टमाटर", "tamatar tomato"],
+    ["गाजर", "gajar carrot"], ["अदरक", "adrak ginger"], ["हरी मिर्च", "hari mirch green chilli chili"],
+    ["लाल मिर्च", "lal mirch red chilli chili powder"], ["मिर्च", "mirch chilli chili"],
+    ["लहसन", "lahsun lasan garlic"], ["लहसुन", "lahsun lasan garlic"], ["पेट्रोल", "petrol fuel"],
+    ["मैदा", "maida flour"], ["सोयाबीन", "soyabean soya soybean"], ["अजीनोमोटो", "ajinomoto msg"],
+    ["चाट मसाला", "chaat masala chat"], ["मसाला", "masala spice"], ["नमक", "namak salt"],
+    ["तेल", "tel oil"], ["मेयोनीज़", "mayonnaise mayonaise mayo"], ["मेयोनीज", "mayonnaise mayo"], ["बटर", "butter"],
+    ["मक्खन", "makhan butter"], ["गैस", "gas cylinder"], ["आलू", "aloo potato"], ["नींबू", "nimbu lemon"],
+    ["मटर", "matar peas"], ["शिमला", "shimla capsicum"], ["पुदीना", "pudina mint"], ["दही", "dahi curd"],
+    ["चीनी", "cheeni chini sugar"], ["चावल", "chawal rice"], ["दूध", "doodh dudh milk"], ["पानी", "paani pani water"],
+    ["सॉस", "sauce sos"], ["मशरूम", "mushroom"], ["पैकेट", "packet pack"], ["थैली", "thaili bag polythene"],
+    ["प्लेट", "plate"], ["टिशू", "tissue paper"], ["कैरी", "carry bag"], ["पॉलीथिन", "polythene packing"]
+  ];
+  function rowWords(name) {
+    let extra = "";
+    ALIASES.forEach(a => { if (name.indexOf(a[0]) !== -1) extra += " " + a[1]; });
+    return (name + " " + translit(name) + extra).toLowerCase().split(/\s+/).filter(Boolean).map(w => [w, skel(w)]);
+  }
+  function matchRow(words, q) {
+    const toks = q.toLowerCase().split(/\s+/).filter(Boolean);
+    return toks.every(tok => {
+      const ts = skel(tok);
+      // सीधा मेल, या स्वर हटाने के बाद ढाँचे का मेल (कम से कम 2 अक्षर, और शब्द के ढाँचे के लगभग पूरे हिस्से जितना)
+      return words.some(w => w[0].indexOf(tok) !== -1 || (ts.length >= 2 && w[1].indexOf(ts) === 0 && ts.length >= w[1].length - 2));
+    });
+  }
+
+  function applySearch() {
+    const inp = document.getElementById("itemSearch");
+    const q = inp ? inp.value.trim() : "";
+    document.getElementById("searchWrap").classList.toggle("has", !!inp.value);
+    let total = 0;
+    SECTIONS.forEach(sec => {
+      const card = document.getElementById("card-" + sec.key);
+      if (!card) return;
+      let shown = 0;
+      card.querySelectorAll("tbody tr[data-id]").forEach(tr => {
+        if (!tr._w) tr._w = rowWords(tr.querySelector(".name-cell").childNodes[0].textContent.trim());
+        const ok = !q || matchRow(tr._w, q);
+        tr.style.display = ok ? "" : "none";
+        if (ok) shown++;
+      });
+      card.style.display = (!q || shown) ? "" : "none";   // खोज चलने पर जिस हिस्से में कुछ न मिले वो छुपा दो
+      total += shown;
+    });
+    const info = document.getElementById("searchInfo");
+    info.classList.toggle("none", !!q && total === 0);
+    info.textContent = !q ? "" : (total ? total + " सामान मिले" : "कुछ नहीं मिला — नया सामान जोड़ना हो तो खोज साफ़ करके, सूची के नीचे \"+ नया सामान जोड़ें\" दबाओ");
+  }
+  document.getElementById("itemSearch").addEventListener("input", applySearch);
+  document.getElementById("itemSearch").addEventListener("keydown", e => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const first = Array.from(document.querySelectorAll("#sections tbody tr[data-id]")).find(tr => tr.style.display !== "none" && tr.closest(".card").style.display !== "none");
+    if (first) { const q = first.querySelector(".qty-input"); q.focus(); q.select(); }
+  });
+  document.getElementById("searchClear").addEventListener("click", () => {
+    const inp = document.getElementById("itemSearch");
+    inp.value = ""; applySearch(); inp.focus();
+  });
 
   function renderMasterManage(section, items) {
     const el = document.getElementById("masterList-" + section);
