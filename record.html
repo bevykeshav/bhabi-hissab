@@ -244,6 +244,11 @@
     const p = s.split("-");
     return { main: p[2] + "-" + p[1] + "-" + p[0].slice(2), sub: WD[d.getDay()] };
   }
+  // कैटेगरी की सूची बैकएंड से (उसी क्रम में); बैकएंड पुराना हो तो पुरानी तीन
+  function getSections() {
+    if (data && data.sections && data.sections.length) return data.sections.map(x => [x.key, x.title]);
+    return [["daily", "Daily का सामान"], ["momos", "मोमोज़ बनाने का सामान"], ["packing", "Packing"]];
+  }
   function fmtLong(s) { const p = String(s).split("-"); return p.length === 3 ? p[2] + "-" + p[1] + "-" + p[0] : s; }
 
   // सिर्फ़ पढ़ने वाली कॉल (JSONP)
@@ -333,9 +338,11 @@
       trio(t.cash, t.online, t.expense, t.onlineExp) +
       balHtml((Number(t.cash) || 0) + (Number(t.online) || 0), t.expense, 'कुल बचा (सामान लाने के बाद)') + '</div>';
 
-    const SEC = { daily: "Daily", momos: "मोमोज़ सामान", packing: "Packing" };
+    const secList = getSections();
+    const SEC = {};
+    secList.forEach(x => { SEC[x[0]] = x[1]; });
     const byDate = {};
-    ["daily", "momos", "packing"].forEach(sec => {
+    secList.map(x => x[0]).forEach(sec => {
       ((data.items && data.items[sec]) || []).forEach(it => {
         (it.days || []).forEach(x => {
           (byDate[x.date] = byDate[x.date] || []).push({ sec: SEC[sec], name: it.name, unit: it.unit || "", qty: x.qty, rate: x.rate, amount: x.amount, online: !!x.online });
@@ -364,7 +371,7 @@
   function renderItems() {
     const box = $("items");
     if (!data || !data.items) { box.innerHTML = '<div class="empty">रिकॉर्ड नहीं मिला।</div>'; return; }
-    const SEC = [["daily", "Daily का सामान"], ["momos", "मोमोज़ बनाने का सामान"], ["packing", "Packing"]];
+    const SEC = getSections();
     let any = false;
     const blocks = SEC.map(sc => {
       const arr = (data.items[sc[0]] || []);
