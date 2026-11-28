@@ -192,6 +192,20 @@
   .onl-tag { font-size:11px; font-weight:700; color:var(--clay); }
   table.items-table { min-width:780px; }
 
+  /* सामान की कैटेगरी बदलना */
+  .mv-btn { min-height:0 !important; height:24px; padding:0 9px; margin-left:6px; font-size:11px; font-weight:700;
+    border:1px solid var(--line); border-radius:12px; background:var(--green-soft); color:var(--green); cursor:pointer; vertical-align:middle; }
+  .modal { position:fixed; top:0; right:0; bottom:0; left:0; z-index:100; background:rgba(0,0,0,.45);
+    display:flex; align-items:flex-end; justify-content:center; }
+  .modal[hidden] { display:none; }
+  .modal-box { background:var(--card); width:100%; max-width:480px; border-radius:16px 16px 0 0;
+    padding:16px 14px max(16px, env(safe-area-inset-bottom)); max-height:88vh; overflow:auto; }
+  .modal-title { font-weight:800; font-size:16px; margin-bottom:2px; }
+  .modal-sub { font-size:12.5px; color:var(--ink-soft); margin-bottom:12px; }
+  .mv-opt { display:block; width:100%; min-height:48px; margin-bottom:8px; text-align:left; padding:0 14px; font-size:15px; font-weight:700;
+    border:1.5px solid var(--line); border-radius:10px; background:var(--paper); color:var(--ink); cursor:pointer; }
+  .mv-opt.cur { background:var(--green-soft); color:var(--green); border-color:var(--green); cursor:default; }
+
   /* सामान खोजना */
   .search-card { padding:10px 12px; }
   .search-wrap { position:relative; }
@@ -326,6 +340,15 @@
       <p class="save-status" id="pmStatus"></p>
     </div>
     <div id="pmView"></div>
+  </div>
+</div>
+
+<div class="modal" id="mvModal" hidden>
+  <div class="modal-box">
+    <div class="modal-title" id="mvTitle"></div>
+    <div class="modal-sub">किस कैटेगरी में डालना है? चुनते ही बदल जाएगा। इस सामान की पुरानी एंट्री भी उसी कैटेगरी में चली जाएँगी।</div>
+    <div id="mvList"></div>
+    <button class="secondary" id="mvCancel" style="width:100%;margin-top:2px;">रद्द करो</button>
   </div>
 </div>
 
@@ -575,7 +598,7 @@
     let rows = items.map(it => {
       const exC = existingC[it.id], exO = existingO[it.id];
       return `<tr data-id="${it.id}" data-unit="${esc(it.unit)}">
-        <td class="name-cell">${esc(it.name)}<div class="muted" style="font-size:11px;">${esc(it.unit)}</div></td>
+        <td class="name-cell">${esc(it.name)}<div class="muted" style="font-size:11px;">${esc(it.unit)}<button type="button" class="mv-btn" data-move="${it.id}" data-name="${esc(it.name)}">📂 कैटेगरी</button></div></td>
         <td class="num"><input type="number" class="qty-input" min="0" step="0.01" value="${exC?exC.quantity:''}" placeholder="0"></td>
         <td class="num"><input type="number" class="rate-input" min="0" step="0.01" value="${(exC && exC.rate) ? exC.rate : (it.rate || '')}" placeholder="0"></td>
         <td class="num"><input type="number" class="oqty-input" min="0" step="0.01" value="${exO?exO.quantity:''}" placeholder="0"></td>
@@ -762,6 +785,65 @@
     inp.value = ""; applySearch(); inp.focus();
   });
 
+  // ===================================================================
+  // 📂 सामान की कैटेगरी बदलना — किसी भी सामान को दूसरी कैटेगरी में डाल सकते हो
+  // ===================================================================
+  let mvItem = null;
+  const MV_FIELDS = ["qty-input", "rate-input", "oqty-input", "orate-input"];
+  function snapInputs() {        // कैटेगरी बदलने पर सूची दोबारा बनती है, इसलिए भरा हुआ (बिना सेव किया) याद रखो
+    const snap = {};
+    document.querySelectorAll("#sections tr[data-id]").forEach(tr => {
+      snap[tr.getAttribute("data-id")] = MV_FIELDS.map(c => tr.querySelector("." + c).value);
+    });
+    return snap;
+  }
+  function restoreInputs(snap) {
+    document.querySelectorAll("#sections tr[data-id]").forEach(tr => {
+      const v = snap[tr.getAttribute("data-id")];
+      if (!v) return;
+      MV_FIELDS.forEach((c, i) => {
+        const el = tr.querySelector("." + c);
+        if (el.value !== v[i]) { el.value = v[i]; el.dispatchEvent(new Event("input", { bubbles: true })); }
+      });
+    });
+  }
+  function closeMove() { document.getElementById("mvModal").hidden = true; mvItem = null; }
+  function openMove(id, name, cur) {
+    mvItem = { id, name, cur };
+    document.getElementById("mvTitle").textContent = "“" + name + "” को कहाँ डालना है?";
+    document.getElementById("mvList").innerHTML = SECTIONS.map(s =>
+      `<button type="button" class="mv-opt ${s.key === cur ? 'cur' : ''}" data-sec="${s.key}" ${s.key === cur ? 'disabled' : ''}>${s.key === cur ? '✓ ' : ''}${esc(s.title)}${s.key === cur ? ' (अभी यहीं है)' : ''}</button>`).join("");
+    document.getElementById("mvModal").hidden = false;
+  }
+  document.getElementById("mvCancel").addEventListener("click", closeMove);
+  document.getElementById("mvModal").addEventListener("click", ev => { if (ev.target.id === "mvModal") closeMove(); });
+  document.getElementById("sections").addEventListener("click", ev => {
+    const b = ev.target.closest("[data-move]");
+    if (!b) return;
+    const card = b.closest(".card");
+    openMove(b.getAttribute("data-move"), b.getAttribute("data-name") || "", card ? card.id.replace("card-", "") : "");
+  });
+  document.getElementById("mvList").addEventListener("click", async ev => {
+    const b = ev.target.closest("[data-sec]");
+    if (!b || b.disabled || !mvItem) return;
+    const item = mvItem, sec = b.getAttribute("data-sec");
+    closeMove();
+    const snap = snapInputs();
+    let res;
+    try { res = await call("saveItemCategory", { payload: { id: item.id, section: sec } }); }
+    catch (e) { alert("कैटेगरी नहीं बदल पाई: " + e.message); return; }
+    if (!res || res.ok !== true) {
+      alert("कैटेगरी नहीं बदल पाई। " + ((res && res.error) ? res.error : "Code.gs का नया version deploy करके दोबारा कोशिश करो।"));
+      return;
+    }
+    await renderAllSections();
+    restoreInputs(snap);
+    const info = document.getElementById("searchInfo");
+    const sc = SECTIONS.find(x => x.key === sec);
+    info.classList.remove("none");
+    info.textContent = "✓ “" + item.name + "” अब " + (sc ? sc.title : sec) + " में है";
+  });
+
   function renderMasterManage(section, items) {
     const el = document.getElementById("masterList-" + section);
     if (!el) return;
@@ -769,6 +851,7 @@
       <div class="master-row">
         <span>${esc(it.name)} <span class="muted">(${esc(it.unit)})</span> ${it.active ? '' : '<span class="muted">— बंद</span>'}</span>
         <span>
+          <button class="chip" data-move="${it.id}" data-name="${esc(it.name)}">📂 कैटेगरी</button>
           <button class="chip ${it.active?'on':''}" data-toggle="${it.id}">${it.active?'सक्रिय':'बंद'}</button>
           <button class="icon-btn danger" data-del="${it.id}">हटाएं</button>
         </span>
