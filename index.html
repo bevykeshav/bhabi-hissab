@@ -421,10 +421,16 @@
   }
   function safeCall(action, extra) { return call(action, extra).catch(() => null); }
 
+  // सामान की कैटेगरी — इसी क्रम में दिखती हैं (Code.gs की सूची से मेल खानी चाहिए)
   const SECTIONS = [
-    { key: "daily", title: "Daily का सामान" },
-    { key: "momos", title: "मोमोज़ बनाने का सामान" },
-    { key: "packing", title: "Packing" }
+    { key: "daily", title: "Vegetables / Raw Material" },
+    { key: "packing", title: "Packaging and Disposable" },
+    { key: "momos", title: "Momo Production Ingredients" },
+    { key: "staff", title: "Staff and External Payment" },
+    { key: "fuel", title: "Fuel and Transportation" },
+    { key: "evening", title: "Evening Shop Expense" },
+    { key: "shopmaint", title: "Shop Maintenance" },
+    { key: "other", title: "Other" }
   ];
 
   // ---- एंट्री की तारीख़: आप रोज़ पिछले दिन का हिसाब भरते हो, इसलिए शुरू में "कल" ही चुनी रहेगी ----
@@ -454,13 +460,13 @@
   function currentDate() { return document.getElementById("mainDate").value || todayStr(); }
 
   // sectionTotals = सिर्फ़ कैश से लिया सामान; sectionOnline = ऑनलाइन मँगाया सामान (कैश से नहीं कटेगा)
-  let sectionTotals = { daily: 0, momos: 0, packing: 0 };
-  let sectionOnline = { daily: 0, momos: 0, packing: 0 };
+  const sectionTotals = {}, sectionOnline = {};
+  SECTIONS.forEach(s => { sectionTotals[s.key] = 0; sectionOnline[s.key] = 0; });
 
   function updateLeftover() {
     const cash = parseFloat(document.getElementById("cashInput").value) || 0;
-    const cashExp = sectionTotals.daily + sectionTotals.momos + sectionTotals.packing;
-    const onlExp = sectionOnline.daily + sectionOnline.momos + sectionOnline.packing;
+    const cashExp = SECTIONS.reduce((a, s) => a + (sectionTotals[s.key] || 0), 0);
+    const onlExp = SECTIONS.reduce((a, s) => a + (sectionOnline[s.key] || 0), 0);
     const leftover = cash - cashExp;
     const card = document.getElementById("leftoverCard");
     const val = document.getElementById("leftoverValue");
@@ -813,12 +819,10 @@
     try {
       const date = currentDate();
 
-      const [cashRes, dailyRes, momosRes, packingRes, stockRes, stockPrevRes, stockItemsRes, creamyRes] =
+      const [cashRes, secRes, stockRes, stockPrevRes, stockItemsRes, creamyRes] =
         await Promise.all([
           call("getCash", { date }),
-          call("getEntries", { section: "daily", date }),
-          call("getEntries", { section: "momos", date }),
-          call("getEntries", { section: "packing", date }),
+          Promise.all(SECTIONS.map(s => call("getEntries", { section: s.key, date }))),
           call("getStockEntries", { date }),
           safeCall("getStockEntries", { date: prevDateStr(date) }),
           call("getStockItems"),
@@ -847,13 +851,14 @@
         return { text: out.join("\n"), total, onl: onlTotal };
       };
 
-      const daily = sectionText("Daily का सामान", dailyRes);
-      const momos = sectionText("Momos बनाने का सामान", momosRes);
-      const packing = sectionText("Packing", packingRes);
+      // जिस कैटेगरी में आज कोई एंट्री नहीं, वो मैसेज में नहीं जाएगी (मैसेज छोटा रहेगा)
+      const secParts = SECTIONS.map((s, i) => ({ r: secRes[i] || { entries: [] }, t: s.title }))
+        .filter(x => (x.r.entries || []).length)
+        .map(x => sectionText(x.t, x.r));
 
       const cash = Number(cashRes.cash) || 0;
-      const expense = daily.total + momos.total + packing.total;
-      const onlExpense = daily.onl + momos.onl + packing.onl;
+      const expense = secParts.reduce((a, x) => a + x.total, 0);
+      const onlExpense = secParts.reduce((a, x) => a + x.onl, 0);
       const cashExpense = expense - onlExpense;
       const cashLeft = cash - cashExpense;
 
@@ -914,11 +919,7 @@
         "",
         "💰 *आज की कमाई (बिक्री): " + money(earned) + "*",
         "",
-        daily.text,
-        "",
-        momos.text,
-        "",
-        packing.text,
+        secParts.length ? secParts.map(x => x.text).join("\n\n") : "📦 आज सामान की कोई एंट्री नहीं",
         "",
         "💰 *कैश और खर्च*",
         "• आज का कैश: " + money(cash),
@@ -1402,6 +1403,7 @@
 
     const itemCards = SECTIONS.map(s => {
       const arr = (r.items && r.items[s.key]) || [];
+      if (!arr.length) return "";   // जिस कैटेगरी में इस रेंज में कुछ नहीं, उसका कार्ड नहीं दिखाओ
       const rows = arr.map((it, ix) => {
         const dl = it.days || [];
         const lines = dl.map(x => `<div class="detail-line"><span>📅 ${esc(fmtDate(x.date))}</span><span>${qtyStr(x.qty)} ${esc(it.unit || "")} × ${money(x.rate)} = <b>${money(x.amount)}</b>${x.online ? ' <span class="onl-tag">ऑनलाइन</span>' : ''}</span></div>`).join("");
@@ -1560,9 +1562,9 @@
 
     SECTIONS.forEach(s => {
       const arr = (r.items && r.items[s.key]) || [];
+      if (!arr.length) return;   // खाली कैटेगरी मैसेज में नहीं जाएगी
       L.push("");
       L.push("📦 *" + s.title + " (कुल)*");
-      if (!arr.length) { L.push("• कोई एंट्री नहीं"); return; }
       arr.forEach(it => {
         L.push("• " + it.name + ": " + qtyStr(it.qty) + " " + (it.unit || "") + " = " + money(it.amount));
       });
